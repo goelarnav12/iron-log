@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Iron Log',
         short_name: 'Iron Log',
@@ -17,11 +17,15 @@ export default defineConfig({
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
-        // One SVG at `sizes: any` covers every launcher size. Swap in PNGs
-        // if you ever need to support a browser that won't take an SVG icon.
+        // PNGs first: Safari ignores an SVG icon outright, and Android's
+        // launcher is happier with real raster sizes. The SVG stays last as a
+        // scalable fallback. The maskable variant is a separate file with the
+        // barbell inset — the standard crop would slice the plates off.
         icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
-          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
         ],
       },
       workbox: {
