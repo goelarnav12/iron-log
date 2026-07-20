@@ -20,7 +20,9 @@ these three files in order:
 1. `schema.sql` — tables, indexes, RLS policies
 2. `migration_001_offline_sync.sql` — adds the `updated_at` / `deleted_at`
    columns the offline sync needs. **Required**: without it every sync fails.
-3. `seed_exercises.sql` — the ~295 built-in exercises. Skipping this is the
+3. `migration_002_counters.sql` — the daily rep-counter tables. Also required:
+   the sync pulls every table, so a missing one fails the whole cycle.
+4. `seed_exercises.sql` — the ~295 built-in exercises. Skipping this is the
    reason for an empty exercise picker; `schema.sql` only creates the table.
 
 **3. Point the app at it.**
@@ -76,7 +78,7 @@ open it, log a full session, and it uploads when you're back on a network.
 
 ```
 schema.sql            run once — tables, indexes, RLS policies
-migration_001_*.sql   run once after schema — offline sync columns
+migration_00N_*.sql   run once after schema, in order
 seed_exercises.sql    run once after schema — the built-in exercise library
 src/lib/types.ts      the models, and the enum-ish constant lists
 src/lib/db.ts         the app's data API — reads and writes IndexedDB only
@@ -130,6 +132,18 @@ looping forever.
 `completed` sets count toward volume, PRs, or any statistic, and warmup sets
 are further excluded from volume. Finishing a workout deletes whatever was left
 unticked rather than storing a row of nulls.
+
+**Daily counters** (the Daily tab) track a movement you accumulate through the
+day rather than train in a session. A day's total is your tapped-in entries
+*plus* completed sets of the same exercise from that day's workouts — summed,
+but shown split, since a total you can't account for is one you stop trusting.
+Entries are stored per set rather than as a daily total, which is what makes
+"best single set" possible. The date is the device's LOCAL day: an evening set
+would otherwise be filed under tomorrow for anyone east of UTC.
+
+Streaks tolerate today being empty — at 9am you haven't done them yet — and
+break only once yesterday is missed. With a goal set, only days reaching it
+extend the streak; without one, any non-zero day counts.
 
 **Estimated 1RM.** Epley (`w × (1 + r/30)`), and only for sets of 12 reps or
 fewer — above that the formula drifts far enough to be misleading, so those

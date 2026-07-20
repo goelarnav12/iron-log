@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import {
-  Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { useStore } from '../state/store';
 import { Empty, Stat } from '../components/ui';
@@ -112,9 +112,10 @@ export function Dashboard() {
                       <div className="tooltip"><div className="k">{label}</div><div>{payload[0].value} sets</div></div>
                     ) : null}
                 />
-                <Bar dataKey="sets" radius={[0, 4, 4, 0]}>
-                  {muscle.map((m) => <Cell key={m.muscle} fill="var(--accent)" />)}
-                </Bar>
+                {/* A flat fill, not per-bar <Cell>s: Recharts collapses a
+                    Bar's Cell children into one rectangle, so the series
+                    silently rendered as a single bar. */}
+                <Bar dataKey="sets" fill="var(--accent)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

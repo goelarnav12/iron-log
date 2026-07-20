@@ -17,6 +17,11 @@ What matters when editing:
 - **Deletes are soft** (`deletedAt` tombstones) and cascades are MANUAL. Postgres
   `on delete cascade` never fires now, because a delete is an UPDATE. Deleting a
   parent without tombstoning its children leaves orphans that sync forever.
+- **Recharts: one plain `<Bar>` per series.** Per-datum `<Cell>` children
+  collapse the series into a single rectangle, and two Bars sharing a `stackId`
+  rendered at roughly a fifteenth of true height. Both were observed on real
+  data in this app; if you need per-bar colour, verify it renders before
+  trusting it.
 - **Client generates ids** (`crypto.randomUUID`). That's what makes a row created
   offline the same row after it syncs instead of a duplicate. Never let Postgres
   default the id.

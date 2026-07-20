@@ -255,6 +255,160 @@ export function weightSeries(
   return points.map((p, i) => ({ date: p.date, weightKg: p.weightKg!, avg: avg[i] }));
 }
 
+// ---------------------------------------------------------------------------
+// Daily rep counters
+//
+// A day's total has TWO sources: the counter entries you tap in through the
+// day, and any completed sets of the same exercise inside that day's workouts.
+// They're summed but kept separately in the return value, because a total you
+// can't explain is a total you stop trusting — the UI shows the split.
+// ---------------------------------------------------------------------------
+
+export interface CounterDay {
+  date: string;
+  /** Reps tapped into the counter. */
+  entries: number;
+  /** Reps of the same exercise found in that day's workouts. */
+  fromWorkouts: number;
+  total: number;
+  /** True when a goal is set and the total reached it. */
+  hitGoal: boolean;
+}
+
+/**
+ * Reps of one exercise, per local day, from completed workout sets.
+ * Warmups count here — a warmup push-up is still a push-up you did, which is
+ * the opposite of how `countsForVolume` treats them for training volume.
+ */
+export function workoutRepsByDay(
+  workouts: Workout[], exerciseId: string,
+): Map<string, number> {
+  const acc = new Map<string, number>();
+  for (const w of workouts) {
+    const day = dayKey(w.startedAt);
+    for (const we of w.exercises) {
+      if (we.exerciseId !== exerciseId) continue;
+      for (const s of we.sets) {
+        if (!isCounted(s) || !s.reps) continue;
+        acc.set(day, (acc.get(day) ?? 0) + s.reps);
+      }
+    }
+  }
+  return acc;
+}
+
+/** Per-day totals for one counter, oldest first, days with zero omitted. */
+export function counterDays(
+  entries: { date: string; reps: number }[],
+  workoutReps: Map<string, number>,
+  dailyGoal: number | null,
+): CounterDay[] {
+  const byDay = new Map<string, { entries: number; fromWorkouts: number }>();
+  for (const e of entries) {
+    const cur = byDay.get(e.date) ?? { entries: 0, fromWorkouts: 0 };
+    cur.entries += e.reps;
+    byDay.set(e.date, cur);
+  }
+  for (const [day, reps] of workoutReps) {
+    const cur = byDay.get(day) ?? { entries: 0, fromWorkouts: 0 };
+    cur.fromWorkouts += reps;
+    byDay.set(day, cur);
+  }
+  return [...byDay.entries()]
+    .map(([date, v]) => {
+      const total = v.entries + v.fromWorkouts;
+      return { date, ...v, total, hitGoal: dailyGoal != null && total >= dailyGoal };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export interface CounterStats {
+  today: number;
+  bestSet: number;
+  bestDay: { date: string; total: number } | null;
+  currentStreak: number;
+  longestStreak: number;
+  lifetime: number;
+  daysActive: number;
+}
+
+/**
+ * A day counts toward a streak if it hit the goal, or — when no goal is set —
+ * if it had any reps at all.
+ *
+ * The current streak tolerates today being empty: at 9am you haven't done your
+ * push-ups yet, and zeroing the streak then would be both wrong and dispiriting.
+ * It breaks only once YESTERDAY is missed.
+ */
+export function counterStats(
+  days: CounterDay[],
+  entries: { reps: number }[],
+  workoutBestSet: number,
+  todayKey: string,
+  dailyGoal: number | null,
+): CounterStats {
+  // The goal has to be passed in, not inferred from the days: a goal that
+  // exists but has never been hit would otherwise look like no goal at all,
+  // and every non-zero day would wrongly extend the streak.
+  const ok = (d: CounterDay) => (dailyGoal != null ? d.total >= dailyGoal : d.total > 0);
+
+  const byDate = new Map(days.map((d) => [d.date, d]));
+
+  const stepBack = (iso: string, n: number) => {
+    const [y, m, dd] = iso.split('-').map(Number);
+    const t = new Date(y, m - 1, dd - n);
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  };
+
+  let currentStreak = 0;
+  let offset = 0;
+  const todayDay = byDate.get(todayKey);
+  if (!todayDay || !ok(todayDay)) offset = 1;
+  for (;;) {
+    const d = byDate.get(stepBack(todayKey, offset));
+    if (!d || !ok(d)) break;
+    currentStreak += 1;
+    offset += 1;
+  }
+
+  let longestStreak = 0;
+  let run = 0;
+  let prev: string | null = null;
+  for (const d of days) {
+    if (!ok(d)) { run = 0; prev = d.date; continue; }
+    run = prev && stepBack(d.date, 1) === prev ? run + 1 : 1;
+    longestStreak = Math.max(longestStreak, run);
+    prev = d.date;
+  }
+
+  const best = days.reduce<CounterDay | null>(
+    (b, d) => (b == null || d.total > b.total ? d : b), null);
+
+  return {
+    today: todayDay?.total ?? 0,
+    bestSet: Math.max(0, workoutBestSet, ...entries.map((e) => e.reps)),
+    bestDay: best ? { date: best.date, total: best.total } : null,
+    currentStreak,
+    longestStreak,
+    lifetime: days.reduce((n, d) => n + d.total, 0),
+    daysActive: days.filter((d) => d.total > 0).length,
+  };
+}
+
+/** Best single completed set of one exercise across all workouts. */
+export function workoutBestSetReps(workouts: Workout[], exerciseId: string): number {
+  let best = 0;
+  for (const w of workouts) {
+    for (const we of w.exercises) {
+      if (we.exerciseId !== exerciseId) continue;
+      for (const s of we.sets) {
+        if (isCounted(s) && (s.reps ?? 0) > best) best = s.reps ?? 0;
+      }
+    }
+  }
+  return best;
+}
+
 export interface Totals {
   workouts: number;
   volume: number;

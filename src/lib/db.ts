@@ -17,14 +17,14 @@
 
 import {
   allRows, deleteRow, getRow, putRow, rowsByIndex, type LocalCardio,
-  type LocalExercise, type LocalMeasurement, type LocalRoutine,
-  type LocalRoutineExercise, type LocalSet, type LocalWorkout,
-  type LocalWorkoutExercise,
+  type LocalCounter, type LocalCounterEntry, type LocalExercise,
+  type LocalMeasurement, type LocalRoutine, type LocalRoutineExercise,
+  type LocalSet, type LocalWorkout, type LocalWorkoutExercise,
 } from './idb';
 import { refreshPending, syncNow } from './sync';
 import type {
-  BodyMeasurement, CardioSession, Exercise, Routine, RoutineExercise,
-  Workout, WorkoutExercise, WorkoutSet,
+  BodyMeasurement, CardioSession, Counter, CounterEntry, Exercise, Routine,
+  RoutineExercise, Workout, WorkoutExercise, WorkoutSet,
 } from './types';
 
 const now = () => new Date().toISOString();
@@ -328,6 +328,79 @@ export async function saveCardio(c: Partial<CardioSession> & { id?: string }): P
 export async function deleteCardio(id: string): Promise<void> {
   await deleteRow('cardio', id);
   kick();
+}
+
+// ---------------------------------------------------------------------------
+// Daily rep counters
+// ---------------------------------------------------------------------------
+
+export async function fetchCounters(): Promise<Counter[]> {
+  return (await allRows<LocalCounter>('counters')).sort((a, b) => a.position - b.position);
+}
+
+export async function fetchCounterEntries(): Promise<CounterEntry[]> {
+  return (await allRows<LocalCounterEntry>('counterEntries'))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function createCounter(exerciseId: string, dailyGoal: number | null): Promise<Counter> {
+  const existing = await allRows<LocalCounter>('counters');
+  // Matches the unique index on (user_id, exercise_id); catching it here means
+  // the error appears now rather than at push time.
+  if (existing.some((c) => c.exerciseId === exerciseId)) {
+    throw new Error('duplicate: you are already tracking that exercise');
+  }
+  const row: LocalCounter = {
+    id: uid(), userId: requireUser(), exerciseId, dailyGoal,
+    position: existing.length, ...stamp(),
+  };
+  await putRow('counters', row);
+  kick();
+  return row;
+}
+
+export async function updateCounter(
+  id: string, patch: { dailyGoal?: number | null; position?: number },
+): Promise<void> {
+  const row = await getRow<LocalCounter>('counters', id);
+  if (!row) return;
+  await putRow('counters', { ...row, ...patch, updatedAt: now() });
+  kick();
+}
+
+export async function deleteCounter(id: string): Promise<void> {
+  // Soft deletes don't cascade — see the note at the top of this file.
+  for (const e of await rowsByIndex<LocalCounterEntry>('counterEntries', 'counterId', id)) {
+    await deleteRow('counterEntries', e.id);
+  }
+  await deleteRow('counters', id);
+  kick();
+}
+
+/**
+ * Log a set. `date` defaults to the LOCAL day — using an ISO timestamp's date
+ * portion would file an evening set under tomorrow for anyone east of UTC.
+ */
+export async function addCounterEntry(
+  counterId: string, reps: number, date?: string,
+): Promise<CounterEntry> {
+  const row: LocalCounterEntry = {
+    id: uid(), userId: requireUser(), counterId,
+    date: date ?? localDay(), reps, ...stamp(),
+  };
+  await putRow('counterEntries', row);
+  kick();
+  return row;
+}
+
+export async function deleteCounterEntry(id: string): Promise<void> {
+  await deleteRow('counterEntries', id);
+  kick();
+}
+
+/** Today in the device's own timezone, as YYYY-MM-DD. */
+export function localDay(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // ---------------------------------------------------------------------------

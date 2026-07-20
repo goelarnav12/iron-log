@@ -18,7 +18,7 @@ import * as db from '../lib/db';
 import * as sync from '../lib/sync';
 import { getMeta, setMeta, wipe } from '../lib/idb';
 import type {
-  BodyMeasurement, CardioSession, Exercise, Routine, Workout,
+  BodyMeasurement, CardioSession, Counter, CounterEntry, Exercise, Routine, Workout,
 } from '../lib/types';
 import type { DistanceUnit, LengthUnit, WeightUnit } from '../lib/units';
 
@@ -44,6 +44,8 @@ interface Store {
   routines: Routine[];
   cardio: CardioSession[];
   measurements: BodyMeasurement[];
+  counters: Counter[];
+  counterEntries: CounterEntry[];
 
   units: Units;
   setUnits: (u: Partial<Units>) => void;
@@ -59,6 +61,7 @@ interface Store {
   refreshRoutines: () => Promise<void>;
   refreshCardio: () => Promise<void>;
   refreshMeasurements: () => Promise<void>;
+  refreshCounters: () => Promise<void>;
   refreshAll: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -90,6 +93,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [cardio, setCardio] = useState<CardioSession[]>([]);
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
+  const [counters, setCounters] = useState<Counter[]>([]);
+  const [counterEntries, setCounterEntries] = useState<CounterEntry[]>([]);
   const [units, setUnitsState] = useState<Units>(loadUnits);
   const [syncStatus, setSyncStatus] = useState<sync.SyncStatus>(sync.getStatus);
 
@@ -124,15 +129,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => guard(async () => setCardio(await db.fetchCardio())), [guard]);
   const refreshMeasurements = useCallback(
     () => guard(async () => setMeasurements(await db.fetchMeasurements())), [guard]);
+  // Counters and their entries always move together — every screen that reads
+  // one needs the other to compute a daily total.
+  const refreshCounters = useCallback(
+    () => guard(async () => {
+      setCounters(await db.fetchCounters());
+      setCounterEntries(await db.fetchCounterEntries());
+    }), [guard]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([
       refreshExercises(), refreshWorkouts(), refreshActive(),
-      refreshRoutines(), refreshCardio(), refreshMeasurements(),
+      refreshRoutines(), refreshCardio(), refreshMeasurements(), refreshCounters(),
     ]);
     setReady(true);
   }, [refreshExercises, refreshWorkouts, refreshActive, refreshRoutines,
-      refreshCardio, refreshMeasurements]);
+      refreshCardio, refreshMeasurements, refreshCounters]);
 
   useEffect(() => {
     if (!isConfigured) {
@@ -161,6 +173,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setReady(false);
       setExercises([]); setWorkouts([]); setActiveWorkout(null);
       setRoutines([]); setCardio([]); setMeasurements([]);
+      setCounters([]); setCounterEntries([]);
       return;
     }
 
@@ -213,10 +226,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: Store = {
     session, loading, ready, error,
     exercises, exercisesById, workouts, activeWorkout, routines, cardio, measurements,
+    counters, counterEntries,
     units, setUnits,
     syncStatus, syncNow: sync.syncNow, retryStuck: sync.retryStuck,
     refreshExercises, refreshWorkouts, refreshActive, refreshRoutines,
-    refreshCardio, refreshMeasurements, refreshAll, signOut,
+    refreshCardio, refreshMeasurements, refreshCounters, refreshAll, signOut,
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

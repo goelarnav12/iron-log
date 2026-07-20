@@ -15,6 +15,7 @@ import { ExerciseLibrary } from './pages/ExerciseLibrary';
 import { ExerciseDetail } from './pages/ExerciseDetail';
 import { Cardio } from './pages/Cardio';
 import { Body } from './pages/Body';
+import { Counters } from './pages/Counters';
 import { Settings } from './pages/Settings';
 
 /** `end` matters only for '/', which would otherwise match every route. */
@@ -25,7 +26,7 @@ const TABS: NavItem[] = [
   { to: '/',        icon: '◎', label: 'Home', end: true },
   { to: '/workout', icon: '⚡', label: 'Workout' },
   { to: '/history', icon: '≡', label: 'History' },
-  { to: '/body',    icon: '◭', label: 'Body' },
+  { to: '/daily',   icon: '✚', label: 'Daily' },
 ];
 
 /**
@@ -34,6 +35,7 @@ const TABS: NavItem[] = [
  * and these are all things you touch weekly at most.
  */
 const SECONDARY = [
+  { to: '/body',      icon: '◭', label: 'Body',      hint: 'Weight and measurements' },
   { to: '/cardio',    icon: '⇢', label: 'Cardio',    hint: 'Runs, rides, conditioning' },
   { to: '/routines',  icon: '▤', label: 'Routines',  hint: 'Workout templates' },
   { to: '/exercises', icon: '☰', label: 'Exercises', hint: 'Library and personal records' },
@@ -78,6 +80,7 @@ function Shell() {
           <Route path="/exercises/:id" element={<ExerciseDetail />} />
           <Route path="/cardio" element={<Cardio />} />
           <Route path="/body" element={<Body />} />
+          <Route path="/daily" element={<Counters />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

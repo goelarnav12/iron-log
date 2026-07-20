@@ -103,6 +103,26 @@ export const MAPPERS: Record<TableName, Mapper> = {
       calories: r.calories, notes: r.notes, ...syncOut(r),
     }),
   },
+  counters: {
+    fromPg: (r) => ({
+      id: r.id, userId: r.user_id, exerciseId: r.exercise_id,
+      dailyGoal: r.daily_goal, position: r.position, ...sync(r),
+    }),
+    toPg: (r) => ({
+      id: r.id, user_id: r.userId, exercise_id: r.exerciseId,
+      daily_goal: r.dailyGoal, position: r.position, ...syncOut(r),
+    }),
+  },
+  counterEntries: {
+    fromPg: (r) => ({
+      id: r.id, userId: r.user_id, counterId: r.counter_id,
+      date: r.date, reps: r.reps, ...sync(r),
+    }),
+    toPg: (r) => ({
+      id: r.id, user_id: r.userId, counter_id: r.counterId,
+      date: r.date, reps: r.reps, ...syncOut(r),
+    }),
+  },
   measurements: {
     fromPg: (r) => ({
       id: r.id, userId: r.user_id, date: r.date,

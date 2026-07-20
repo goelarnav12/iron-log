@@ -102,6 +102,26 @@ export interface BodyMeasurement {
   notes: string | null;
 }
 
+/** A movement you accumulate through the day rather than train in a session. */
+export interface Counter {
+  id: string;
+  userId: string;
+  exerciseId: string;
+  /** Reps/day you're aiming for. Null means any non-zero day counts. */
+  dailyGoal: number | null;
+  position: number;
+}
+
+/** One set, not a daily total — the daily total is a sum of these. */
+export interface CounterEntry {
+  id: string;
+  userId: string;
+  counterId: string;
+  /** Local calendar date, YYYY-MM-DD. See migration_002 for why not a timestamp. */
+  date: string;
+  reps: number;
+}
+
 // Order matters: this drives the filter chips on the library and picker
 // screens, so it runs roughly top-of-body to bottom rather than alphabetically.
 export const MUSCLE_GROUPS = [

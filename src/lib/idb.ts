@@ -11,7 +11,8 @@
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 import type {
-  BodyMeasurement, CardioSession, Exercise, RoutineExercise, WorkoutSet,
+  BodyMeasurement, CardioSession, Counter, CounterEntry, Exercise,
+  RoutineExercise, WorkoutSet,
 } from './types';
 
 /** Every synced row carries these two. See migration_001_offline_sync.sql. */
@@ -36,6 +37,8 @@ export type LocalWorkoutExercise = {
 } & SyncFields;
 export type LocalSet = WorkoutSet & SyncFields;
 export type LocalCardio = CardioSession & SyncFields;
+export type LocalCounter = Counter & SyncFields;
+export type LocalCounterEntry = CounterEntry & SyncFields;
 export type LocalMeasurement = BodyMeasurement & SyncFields;
 
 /**
@@ -57,7 +60,8 @@ export interface OutboxEntry {
 
 export type TableName =
   | 'exercises' | 'routines' | 'routineExercises' | 'workouts'
-  | 'workoutExercises' | 'sets' | 'cardio' | 'measurements';
+  | 'workoutExercises' | 'sets' | 'cardio' | 'measurements'
+  | 'counters' | 'counterEntries';
 
 /** Local store name → Postgres table name. */
 export const PG_TABLE: Record<TableName, string> = {
@@ -69,6 +73,8 @@ export const PG_TABLE: Record<TableName, string> = {
   sets: 'sets',
   cardio: 'cardio_sessions',
   measurements: 'body_measurements',
+  counters: 'counters',
+  counterEntries: 'counter_entries',
 };
 
 /**
@@ -78,6 +84,8 @@ export const PG_TABLE: Record<TableName, string> = {
 export const PUSH_ORDER: TableName[] = [
   'exercises', 'routines', 'routineExercises', 'workouts',
   'workoutExercises', 'sets', 'cardio', 'measurements',
+  // counters references exercises; counterEntries references counters.
+  'counters', 'counterEntries',
 ];
 
 interface Schema extends DBSchema {
@@ -104,6 +112,11 @@ interface Schema extends DBSchema {
     key: string; value: LocalMeasurement;
     indexes: { updatedAt: string; date: string };
   };
+  counters: { key: string; value: LocalCounter; indexes: { updatedAt: string } };
+  counterEntries: {
+    key: string; value: LocalCounterEntry;
+    indexes: { updatedAt: string; counterId: string; date: string };
+  };
   outbox: { key: string; value: OutboxEntry };
   /** Sync cursors (`cursor:<table>` → ISO timestamp) and the signed-in user id. */
   meta: { key: string; value: unknown };
@@ -122,7 +135,10 @@ let dbPromise: Promise<IDBPDatabase<Schema>> | null = null;
 type LooseDB = IDBPDatabase<any>;
 
 export function idb(): Promise<IDBPDatabase<Schema>> {
-  dbPromise ??= openDB<Schema>('iron-log', 1, {
+  // Version 2 added the counter stores. `upgrade` runs for the versions being
+  // crossed, so guard each store — a v1 device upgrading must not re-create
+  // (and thereby fail on) the stores it already has.
+  dbPromise ??= openDB<Schema>('iron-log', 2, {
     upgrade(database) {
       // Same reason as LooseDB below: creating stores by name defeats idb's
       // per-store narrowing, so the extra indexes wouldn't type-check.
@@ -131,6 +147,7 @@ export function idb(): Promise<IDBPDatabase<Schema>> {
       // Every store gets an updatedAt index — that's what the incremental pull
       // cursor walks. Extra per-store indexes back the app's own lookups.
       const create = (name: TableName, indexes: string[] = []) => {
+        if (d.objectStoreNames.contains(name)) return;
         const s = d.createObjectStore(name, { keyPath: 'id' });
         s.createIndex('updatedAt', 'updatedAt');
         for (const i of indexes) s.createIndex(i, i);
@@ -143,8 +160,10 @@ export function idb(): Promise<IDBPDatabase<Schema>> {
       create('sets', ['workoutExerciseId']);
       create('cardio', ['date']);
       create('measurements', ['date']);
-      d.createObjectStore('outbox', { keyPath: 'key' });
-      d.createObjectStore('meta');
+      create('counters');
+      create('counterEntries', ['counterId', 'date']);
+      if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'key' });
+      if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta');
     },
   });
   return dbPromise;
