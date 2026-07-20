@@ -123,15 +123,22 @@ a { color: inherit; text-decoration: none; }
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--border-soft);
   }
-  .tabbar a {
+  /* The last tab is a <button> that opens the More sheet rather than a link,
+     so both element types have to be styled identically. */
+  .tabbar a, .tabbar button {
     flex: 1;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 3px;
     font-size: 10.5px; font-weight: 600;
     color: var(--text-faint);
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: inherit;
+    /* Five targets across a narrow phone: keep labels on one line rather than
+       letting one wrap and shove the row out of alignment. */
+    white-space: nowrap; min-width: 0;
   }
-  .tabbar a .ico { font-size: 19px; }
-  .tabbar a.active { color: var(--accent); }
+  .tabbar a .ico, .tabbar button .ico { font-size: 19px; }
+  .tabbar a.active, .tabbar button.active { color: var(--accent); }
 }
 
 /* ---------------------------------------------------------------------------
