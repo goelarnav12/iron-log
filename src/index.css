@@ -392,6 +392,34 @@ textarea { resize: vertical; min-height: 68px; }
 @media (min-width: 821px) { .rest-timer { bottom: 20px; } }
 
 /* ---------------------------------------------------------------------------
+   Sync indicator
+--------------------------------------------------------------------------- */
+.sync-dot {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 10px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text-dim); font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.sync-dot:hover { background: var(--surface-3); }
+.sync-dot .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.sync-dot.good { color: var(--good); }
+.sync-dot.warn { color: var(--warn); }
+.sync-dot.bad  { color: var(--bad); }
+.sync-dot .txt { color: var(--text-dim); }
+.sync-dot.bad .txt { color: var(--bad); }
+
+.sync-dot .dot.spin { animation: sync-pulse 1s ease-in-out infinite; }
+@keyframes sync-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* On phones the label is dropped — the colour carries the meaning, and the
+   live-workout bar has no room to spare. */
+@media (max-width: 520px) {
+  .sync-dot .txt { display: none; }
+  .sync-dot { padding: 6px; }
+}
+
+/* ---------------------------------------------------------------------------
    Charts. Recharts renders into this box; it needs an explicit height.
 --------------------------------------------------------------------------- */
 .chart-box { height: 260px; width: 100%; margin-top: 6px; }

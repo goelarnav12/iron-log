@@ -1,6 +1,7 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { StoreProvider, useStore } from './state/store';
 import { isConfigured } from './lib/supabase';
+import { SyncIndicator } from './components/SyncIndicator';
 import { Auth } from './pages/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { History } from './pages/History';
@@ -46,6 +47,7 @@ function Shell() {
           </NavLink>
         ))}
         <div className="sidebar-foot">
+          <div style={{ marginBottom: 10 }}><SyncIndicator /></div>
           <div className="email">{session?.user.email}</div>
           <button className="btn ghost sm" onClick={signOut}>Sign out</button>
         </div>

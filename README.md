@@ -14,10 +14,14 @@ You need Node (`brew install node`) and a free Supabase project.
 
 **1. Create the Supabase project** at [supabase.com](https://supabase.com).
 
-**2. Create the tables.** In the dashboard, open SQL Editor → New Query, paste
-all of `schema.sql`, Run. **Then do the same with `seed_exercises.sql`** — that
-one fills in the ~295 built-in exercises. Skipping it is the reason for an empty
-exercise picker; `schema.sql` only creates the table, it doesn't populate it.
+**2. Create the tables.** In the dashboard, open SQL Editor → New Query, and run
+these three files in order:
+
+1. `schema.sql` — tables, indexes, RLS policies
+2. `migration_001_offline_sync.sql` — adds the `updated_at` / `deleted_at`
+   columns the offline sync needs. **Required**: without it every sync fails.
+3. `seed_exercises.sql` — the ~295 built-in exercises. Skipping this is the
+   reason for an empty exercise picker; `schema.sql` only creates the table.
 
 **3. Point the app at it.**
 
@@ -50,39 +54,35 @@ npm run build        # -> dist/
 Drag `dist/` to Netlify Drop, or point Vercel/Cloudflare Pages at the repo.
 Set the same two env vars in the host's dashboard.
 
-`vercel.json` covers both of the requirements below for Vercel. It does two
-things, and neither is expressible as a comment because `vercel.json` rejects
-unknown keys:
-
-- The `rewrites` rule serves `index.html` for every path, so a hard load of
-  `/history/<id>` reaches React Router instead of 404ing. Vercel applies
-  rewrites only *after* the filesystem check, so real files (`/assets/*`,
-  `/sw.js`, `/manifest.webmanifest`) are served normally.
-- The `sw.js` header disables caching on the service worker. Vite fingerprints
-  the assets the worker precaches, so a cached `sw.js` would pin the app to an
-  old build indefinitely.
-
-On another host you need the same two things by its own mechanism.
-
-Two things the host needs to get right:
+Three things the host needs to get right:
 
 - **SPA fallback** — every route must serve `index.html`, or a refresh on
-  `/history/abc` 404s. Netlify and Vercel do this automatically for Vite
-  projects; on a bare static host you may need a rewrite rule.
+  `/history/abc` 404s.
+- **No caching on `/sw.js`** — Vite fingerprints the assets the service worker
+  precaches, so a cached worker pins the app to an old build indefinitely.
 - **HTTPS** — required for the PWA to install and for the service worker to
   register at all.
 
+`vercel.json` handles the first two. Its contents carry no comments because
+`vercel.json` rejects unknown keys, so the reasoning lives here instead. On
+another host you need the same two things by its own mechanism; HTTPS is
+automatic everywhere.
+
 Then open the deployed URL on your phone and use Add to Home Screen. It runs
-full-screen and the app shell is cached, so it opens instantly. Logging still
-needs a connection: writes go straight to Postgres and are not queued offline.
+full-screen, and because the app is local-first it works with no signal at all —
+open it, log a full session, and it uploads when you're back on a network.
 
 ## Layout
 
 ```
 schema.sql            run once — tables, indexes, RLS policies
+migration_001_*.sql   run once after schema — offline sync columns
 seed_exercises.sql    run once after schema — the built-in exercise library
 src/lib/types.ts      the models, and the enum-ish constant lists
-src/lib/db.ts         every Supabase call, and every snake_case translation
+src/lib/db.ts         the app's data API — reads and writes IndexedDB only
+src/lib/idb.ts        the on-device mirror and the outbox
+src/lib/sync.ts       the background push/pull loop and conflict resolution
+src/lib/remote.ts     the only file that talks to Supabase; all snake_case
 src/lib/stats.ts      pure arithmetic — volume, e1RM, PRs, streaks
 src/lib/units.ts      kg/lb, cm/in, km/mi, duration parsing and formatting
 src/state/store.tsx   auth + all app data in one context
@@ -97,12 +97,34 @@ cm/in toggles in Settings are display-only, converted at the edge of the UI in
 `units.ts`. Switching units never rewrites a stored number, so you can flip
 back and forth freely.
 
-**Data flow.** No client cache and no optimistic updates: every mutation hits
-Postgres, then the affected slice is refetched. One person's training history
-is small enough that the extra round trip is free, and it means the screen is
-never showing something the database disagrees with. The exception is the live
-workout screen, where set inputs live in local state and flush on blur — see
-the comment at the top of `LiveWorkout.tsx`.
+**Local-first.** The app reads and writes IndexedDB, never the network. Every
+screen renders from the on-device mirror, so a cold start with no signal shows
+your full history and logging never fails. `sync.ts` reconciles with Postgres
+in the background — on a 30s timer, on regaining connectivity, and whenever the
+tab returns to the foreground.
+
+Writes are queued in an outbox keyed by `<table>:<rowId>`, so editing the same
+set five times offline collapses to one pending entry. Ids are generated on the
+client (`crypto.randomUUID`), which is what makes a row created offline the
+*same* row after it syncs rather than a duplicate.
+
+**Sync order is pull-then-push, and that matters.** A pulled row with a newer
+`updatedAt` than the local copy means another device won; the local row is
+overwritten and its outbox entry dropped. Pushing first would overwrite the
+server with the older value and lose the newer edit. Conflicts resolve
+last-write-wins per row.
+
+**Deletes are soft**, via `deleted_at`. A hard delete is invisible to a device
+that was offline when it happened — it has nothing to pull, so it would
+resurrect the row on its next push. The cost is that cascades must be done by
+hand in `db.ts`: Postgres `on delete cascade` never fires, because a delete is
+now an UPDATE. Delete a workout and you must tombstone its exercises and sets
+yourself.
+
+**The sync indicator** in the header is green when synced, amber with a count
+when writes are queued or you're offline, red on error (tap to retry). A write
+that fails 6 times stops being retried and turns the dot red rather than
+looping forever.
 
 **Completed sets.** A workout in progress is full of unchecked rows. Only
 `completed` sets count toward volume, PRs, or any statistic, and warmup sets

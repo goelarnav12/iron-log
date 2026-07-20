@@ -6,9 +6,20 @@ What matters when editing:
 - **Units.** kg / cm / m / s in Postgres, always. The kg-lb and cm-in toggles are
   display-only and convert at the UI edge via `src/lib/units.ts`. Never persist a
   converted number.
-- **`src/lib/db.ts` is the only file that talks to Supabase** and the only place
-  camelCase↔snake_case translation happens. A component should never see
-  `weight_kg`.
+- **The app is local-first.** `src/lib/db.ts` is the data API and touches only
+  IndexedDB (`src/lib/idb.ts`) — no screen ever awaits the network. `sync.ts`
+  reconciles with Postgres in the background, and `src/lib/remote.ts` is the
+  ONLY file that talks to Supabase and the only place camelCase↔snake_case
+  translation happens. A component should never see `weight_kg`.
+- **Sync is pull-then-push**, resolving last-write-wins on `updatedAt`. Don't
+  reorder it: pushing first would overwrite a newer remote edit with a stale
+  local one.
+- **Deletes are soft** (`deletedAt` tombstones) and cascades are MANUAL. Postgres
+  `on delete cascade` never fires now, because a delete is an UPDATE. Deleting a
+  parent without tombstoning its children leaves orphans that sync forever.
+- **Client generates ids** (`crypto.randomUUID`). That's what makes a row created
+  offline the same row after it syncs instead of a duplicate. Never let Postgres
+  default the id.
 - **`src/lib/stats.ts` is pure** — no DOM, no network, no app state. All arithmetic
   (volume, Epley e1RM, PRs, streaks) lives there so it stays testable.
 - **Only `completed` sets count** toward any statistic; warmups are additionally

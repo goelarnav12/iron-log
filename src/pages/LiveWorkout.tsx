@@ -1,10 +1,13 @@
-// The screen you actually stand at the rack with.
+// The screen you actually stand at the rack with — and the one that most has
+// to work with no signal.
 //
-// State model: the workout lives in Postgres and is re-fetched after every
-// structural change (add/remove exercise, add/delete set). Set *inputs* are
-// the exception — they're held in local component state and flushed on blur,
-// so typing doesn't fire a request per keystroke. Ticking a set flushes
-// immediately, since that's the moment the number is final.
+// State model: the workout lives in IndexedDB and is re-read after every
+// structural change (add/remove exercise, add/delete set). Those reads are
+// local and instant, so there is no loading state anywhere on this screen and
+// no action can fail for lack of connectivity; `sync.ts` uploads in the
+// background. Set *inputs* are still held in local component state and flushed
+// on blur, so typing doesn't churn IndexedDB on every keystroke. Ticking a set
+// flushes immediately, since that's the moment the number is final.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../state/store';
@@ -13,6 +16,7 @@ import type { SetType, Workout, WorkoutSet } from '../lib/types';
 import { formatDuration, kgTo, toKg, trim } from '../lib/units';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { ConfirmButton, Empty, Modal } from '../components/ui';
+import { SyncIndicator } from '../components/SyncIndicator';
 
 const REST_KEY = 'ht.restSeconds';
 const defaultRest = () => Number(localStorage.getItem(REST_KEY) ?? 90);
@@ -154,6 +158,7 @@ function ActiveWorkout({
         <span className="timer">{formatDuration(elapsed)}</span>
         <span className="faint" style={{ fontSize: 13 }}>{completedSets} sets</span>
         <div style={{ flex: 1 }} />
+        <SyncIndicator />
         <ConfirmButton armed={discardArmed} setArmed={setDiscardArmed} onConfirm={() => void discard()} armedLabel="Discard?">
           Discard
         </ConfirmButton>

@@ -1,20 +1,22 @@
 // The whole app's state, in one context.
 //
-// Deliberately simple: there is no client-side cache and no optimistic update.
-// Every mutation goes to Postgres and is followed by a refetch of whatever it
-// touched. The dataset is one person's training history — a few thousand rows
-// at the outside — so the extra round trip buys correctness for free.
+// The app is LOCAL-FIRST: every read and write in `db.ts` hits IndexedDB on
+// the device, so nothing here awaits the network and the whole app works
+// offline. `sync.ts` reconciles with Postgres in the background and this
+// provider re-reads the mirror whenever a sync lands.
 //
-// The one exception is the live workout screen, which keeps set inputs in
-// local component state while you type and writes on blur; see LiveWorkout.
+// Mutations still follow mutate-then-refresh, but "refresh" is now an
+// IndexedDB read costing a millisecond rather than a round trip.
 
 import {
-  createContext, useCallback, useContext, useEffect, useMemo, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, isConfigured } from '../lib/supabase';
 import * as db from '../lib/db';
+import * as sync from '../lib/sync';
+import { getMeta, setMeta, wipe } from '../lib/idb';
 import type {
   BodyMeasurement, CardioSession, Exercise, Routine, Workout,
 } from '../lib/types';
@@ -45,6 +47,11 @@ interface Store {
 
   units: Units;
   setUnits: (u: Partial<Units>) => void;
+
+  /** Background sync state, for the header indicator. */
+  syncStatus: sync.SyncStatus;
+  syncNow: () => Promise<void>;
+  retryStuck: () => Promise<void>;
 
   refreshExercises: () => Promise<void>;
   refreshWorkouts: () => Promise<void>;
@@ -84,6 +91,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cardio, setCardio] = useState<CardioSession[]>([]);
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
   const [units, setUnitsState] = useState<Units>(loadUnits);
+  const [syncStatus, setSyncStatus] = useState<sync.SyncStatus>(sync.getStatus);
 
   const setUnits = useCallback((u: Partial<Units>) => {
     setUnitsState((prev) => {
@@ -142,20 +150,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // Keeps the latest refreshAll reachable from the sync subscription without
+  // making that subscription re-run on every render.
+  const refreshRef = useRef(refreshAll);
+  refreshRef.current = refreshAll;
+
   useEffect(() => {
     if (!session) {
+      db.setCurrentUser(null);
       setReady(false);
       setExercises([]); setWorkouts([]); setActiveWorkout(null);
       setRoutines([]); setCardio([]); setMeasurements([]);
       return;
     }
-    void refreshAll();
+
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+
+    void (async () => {
+      // A different account on this device would inherit the previous user's
+      // mirror, and every row in the outbox would then be rejected by RLS.
+      const previous = await getMeta<string>('userId');
+      if (previous && previous !== session.user.id) await wipe();
+      await setMeta('userId', session.user.id);
+
+      db.setCurrentUser(session.user.id);
+      if (cancelled) return;
+
+      // Render from whatever is already on disk before the network is involved
+      // at all — this is what makes a cold start offline show your history.
+      await refreshAll();
+      stop = sync.startSync();
+    })();
+
+    return () => { cancelled = true; stop?.(); };
   }, [session, refreshAll]);
+
+  // A completed sync may have pulled rows from another device; re-read the
+  // mirror so the UI reflects them.
+  useEffect(() => {
+    let previous = sync.getStatus().lastSyncedAt;
+    return sync.subscribe((s) => {
+      setSyncStatus(s);
+      if (s.lastSyncedAt && s.lastSyncedAt !== previous) {
+        previous = s.lastSyncedAt;
+        void refreshRef.current();
+      }
+    });
+  }, []);
 
   const exercisesById = useMemo(
     () => new Map(exercises.map((e) => [e.id, e])), [exercises]);
 
   const signOut = useCallback(async () => {
+    // Push anything still queued before the token goes away, otherwise those
+    // writes are stranded on disk until the same account signs back in.
+    await sync.syncNow().catch(() => {});
+    await wipe();
     await supabase.auth.signOut();
   }, []);
 
@@ -163,6 +214,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     session, loading, ready, error,
     exercises, exercisesById, workouts, activeWorkout, routines, cardio, measurements,
     units, setUnits,
+    syncStatus, syncNow: sync.syncNow, retryStuck: sync.retryStuck,
     refreshExercises, refreshWorkouts, refreshActive, refreshRoutines,
     refreshCardio, refreshMeasurements, refreshAll, signOut,
   };

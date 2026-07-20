@@ -4,6 +4,7 @@ import {
 } from 'recharts';
 import { useStore } from '../state/store';
 import { Empty, Stat } from '../components/ui';
+import { SyncIndicator } from '../components/SyncIndicator';
 import {
   dayKey, setsByMuscle, totals, volumeByWeek, weekKey, weekStreak,
   workoutSetCount, workoutVolume,
@@ -42,7 +43,10 @@ export function Dashboard() {
             {t.workouts ? `${t.workouts} workouts logged` : 'Nothing logged yet'}
           </div>
         </div>
-        <Link to="/workout" className="btn primary">⚡ Start workout</Link>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <SyncIndicator />
+          <Link to="/workout" className="btn primary">⚡ Start workout</Link>
+        </div>
       </div>
 
       <div className="stat-grid">
