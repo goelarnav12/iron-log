@@ -50,6 +50,20 @@ npm run build        # -> dist/
 Drag `dist/` to Netlify Drop, or point Vercel/Cloudflare Pages at the repo.
 Set the same two env vars in the host's dashboard.
 
+`vercel.json` covers both of the requirements below for Vercel. It does two
+things, and neither is expressible as a comment because `vercel.json` rejects
+unknown keys:
+
+- The `rewrites` rule serves `index.html` for every path, so a hard load of
+  `/history/<id>` reaches React Router instead of 404ing. Vercel applies
+  rewrites only *after* the filesystem check, so real files (`/assets/*`,
+  `/sw.js`, `/manifest.webmanifest`) are served normally.
+- The `sw.js` header disables caching on the service worker. Vite fingerprints
+  the assets the worker precaches, so a cached `sw.js` would pin the app to an
+  old build indefinitely.
+
+On another host you need the same two things by its own mechanism.
+
 Two things the host needs to get right:
 
 - **SPA fallback** — every route must serve `index.html`, or a refresh on
