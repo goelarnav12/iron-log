@@ -361,6 +361,22 @@ textarea { resize: vertical; min-height: 68px; }
   border-radius: var(--radius); padding: 12px 15px; margin-bottom: 16px;
 }
 
+/* ---------- Strength standard ---------- */
+.card.standard .standard-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 9px;
+}
+.card.standard .level { font-weight: 650; font-size: 16px; color: var(--accent); }
+.card.standard .ratio { font-size: 13px; color: var(--text-faint); }
+.standard-bar {
+  height: 6px; border-radius: 3px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border);
+  margin-bottom: 9px;
+}
+.standard-bar span { display: block; height: 100%; background: var(--accent); }
+.card.standard .meta { font-size: 12.5px; color: var(--text-faint); }
+.card.standard .meta.faint { margin-top: 4px; font-size: 11.5px; opacity: 0.75; }
+
 .ex-block { margin-bottom: 16px; }
 .ex-head {
   display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
@@ -381,6 +397,27 @@ textarea { resize: vertical; min-height: 68px; }
 .set-row { margin-bottom: 6px; }
 .set-row.done input { background: rgba(61, 220, 151, 0.08); border-color: rgba(61, 220, 151, 0.28); }
 .set-prev { font-size: 12px; color: var(--text-faint); text-align: center; font-family: var(--mono); }
+
+/* A blank set prefilled with last session's numbers. Dimmed so a suggestion
+   never reads as something you logged — it darkens to normal the moment you
+   focus the field or tick the set. */
+.set-grid input.suggested { color: var(--text-faint); }
+
+/* What to put on the bar next, from overloadSuggestion(). */
+.overload {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;
+  font-size: 12.5px; margin: 0 2px 9px;
+  padding: 7px 10px; border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.overload .mark { font-weight: 700; }
+.overload strong { font-weight: 650; }
+.overload .why { color: var(--text-faint); }
+.overload.increase { border-color: rgba(61, 220, 151, 0.3); }
+.overload.increase .mark, .overload.increase strong { color: var(--good); }
+.overload.deload { border-color: rgba(255, 92, 108, 0.3); }
+.overload.deload .mark, .overload.deload strong { color: var(--bad); }
+.overload.hold .mark, .overload.hold strong { color: var(--warn); }
 
 .set-type-btn {
   width: 100%; padding: 9px 0; border-radius: var(--radius-sm);

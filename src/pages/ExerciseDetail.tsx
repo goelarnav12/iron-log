@@ -7,7 +7,7 @@ import { useStore } from '../state/store';
 import * as db from '../lib/db';
 import { ConfirmButton, Empty, Stat } from '../components/ui';
 import { NewExerciseForm } from '../components/NewExerciseForm';
-import { personalRecords, strengthSeries } from '../lib/stats';
+import { personalRecords, strengthSeries, strengthStanding } from '../lib/stats';
 import { formatDuration, kgTo, trim } from '../lib/units';
 
 const shortDate = (iso: string) =>
@@ -16,7 +16,7 @@ const shortDate = (iso: string) =>
 export function ExerciseDetail() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
-  const { exercisesById, workouts, units, refreshExercises } = useStore();
+  const { exercisesById, workouts, measurements, units, refreshExercises } = useStore();
   const [editing, setEditing] = useState(false);
   const [armed, setArmed] = useState(false);
 
@@ -24,6 +24,17 @@ export function ExerciseDetail() {
 
   const series = useMemo(() => (id ? strengthSeries(workouts, id) : []), [workouts, id]);
   const pr = useMemo(() => (id ? personalRecords(workouts).get(id) : undefined), [workouts, id]);
+
+  // Newest first out of db.fetchMeasurements, so the first row that actually
+  // recorded a weight is the current one. Days where only a tape measurement
+  // was taken have a null weight and must be skipped, not read as zero.
+  const bodyweightKg = useMemo(
+    () => measurements.find((m) => m.weightKg != null)?.weightKg ?? null,
+    [measurements]);
+
+  const standing = useMemo(
+    () => (exercise ? strengthStanding(exercise.name, pr?.best1RM ?? null, bodyweightKg) : null),
+    [exercise, pr, bodyweightKg]);
 
   /** Every session this exercise appears in, newest first. */
   const sessions = useMemo(
@@ -91,6 +102,34 @@ export function ExerciseDetail() {
         />
         <Stat label="Sessions" value={sessions.length} />
       </div>
+
+      {/* Shown only when there is a published standard for this lift, a
+          bodyweight on file, and an e1RM to compare. Any one missing is a
+          reason to show nothing rather than a zero. */}
+      {standing && (
+        <>
+          <div className="section-head"><h2>Strength standard</h2></div>
+          <div className="card standard">
+            <div className="standard-head">
+              <span className="level">{standing.level ?? 'Below beginner'}</span>
+              <span className="ratio mono">{standing.ratio.toFixed(2)}× bodyweight</span>
+            </div>
+            <div className="standard-bar">
+              <span style={{ width: `${standing.progress * 100}%` }} />
+            </div>
+            <div className="meta">
+              {standing.next
+                ? <>{trim(kgTo(standing.toNextKg ?? 0, units.weight), 1)} {units.weight} of estimated 1RM to {standing.next}.</>
+                : <>Top of the scale.</>}
+              {' '}Against {trim(kgTo(bodyweightKg ?? 0, units.weight), 1)} {units.weight} bodyweight.
+            </div>
+            {/* Said plainly: these thresholds differ by sex and the app has no
+                sex on file, so it names whose they are instead of implying
+                they are universal. */}
+            <div className="meta faint">Male standards.</div>
+          </div>
+        </>
+      )}
 
       <div className="section-head"><h2>Estimated 1RM over time</h2></div>
       <div className="card">

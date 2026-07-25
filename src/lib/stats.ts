@@ -409,6 +409,214 @@ export function workoutBestSetReps(workouts: Workout[], exerciseId: string): num
   return best;
 }
 
+// ---------------------------------------------------------------------------
+// Progressive overload
+// ---------------------------------------------------------------------------
+
+/** A completed working set — not a warmup, and with both numbers recorded. */
+const isWorkingSet = (s: WorkoutSet) =>
+  countsForVolume(s) && s.weightKg != null && s.weightKg > 0 && s.reps != null && s.reps > 0;
+
+/**
+ * Working sets of one exercise, grouped by workout, newest session first.
+ * Sessions where nothing qualified are dropped rather than left empty.
+ */
+function workingSessions(workouts: Workout[], exerciseId: string): WorkoutSet[][] {
+  const byWorkout: { date: string; sets: WorkoutSet[] }[] = [];
+  for (const w of workouts) {
+    const sets: WorkoutSet[] = [];
+    for (const we of w.exercises) {
+      if (we.exerciseId !== exerciseId) continue;
+      for (const s of we.sets) if (isWorkingSet(s)) sets.push(s);
+    }
+    if (sets.length) byWorkout.push({ date: w.startedAt, sets });
+  }
+  return byWorkout.sort((a, b) => b.date.localeCompare(a.date)).map((x) => x.sets);
+}
+
+/**
+ * The smallest jump you can actually load: 2.5 kg, or 2.5% of the bar rounded
+ * to the nearest 2.5 kg once that exceeds it. A flat 2.5 kg is right at 100 kg
+ * and absurd on a 200 kg deadlift, where it is a rounding error.
+ */
+export function loadIncrementKg(weightKg: number): number {
+  return Math.max(2.5, Math.round((weightKg * 0.025) / 2.5) * 2.5);
+}
+
+export interface OverloadSuggestion {
+  action: 'increase' | 'hold' | 'deload';
+  /** What to put on the bar next time, in kg. */
+  weightKg: number;
+  /** Reps to aim for on every working set at that weight. */
+  targetReps: number;
+  /** The weight the last session was actually done at. */
+  lastWeightKg: number;
+  /** Reps achieved last session, in set order. */
+  lastReps: number[];
+  sessions: number;
+  reason: string;
+}
+
+/**
+ * What to do next on one exercise, in the style of Hevy's auto-progression:
+ * hit your target reps on every working set and the load goes up, miss it
+ * badly and it comes down, anything in between holds.
+ *
+ * The target rep count is **inferred from your own history** rather than
+ * configured. Whatever you do most often on this lift across the last few
+ * sessions is what the app assumes you are training for — so a 5×5 programme
+ * gets held to 5 and a hypertrophy block to 10, with nothing to set up. Ties
+ * resolve to the higher count, because the harder reading is the safer one to
+ * hold yourself to.
+ *
+ * That window includes the session being judged, which matters on the very
+ * first one: with no history behind it, a session of 3,3,2 reads as triples
+ * with one short set rather than as a failed set of five, so it holds rather
+ * than deloading. That is the honest answer — there is no target to have
+ * missed yet — and it self-corrects as soon as a second session exists.
+ *
+ * Returns null when there is nothing to go on: no history, or no session where
+ * a completed non-warmup set carried both a weight and a rep count.
+ */
+export function overloadSuggestion(
+  workouts: Workout[],
+  exerciseId: string,
+  lookback = 5,
+): OverloadSuggestion | null {
+  const sessions = workingSessions(workouts, exerciseId);
+  if (!sessions.length) return null;
+
+  // Most common rep count over the recent window. Counting sets rather than
+  // sessions means a session of 5×5 weighs more than one stray set of 12.
+  const counts = new Map<number, number>();
+  for (const sets of sessions.slice(0, lookback)) {
+    for (const s of sets) counts.set(s.reps!, (counts.get(s.reps!) ?? 0) + 1);
+  }
+  let targetReps = 0;
+  let best = -1;
+  for (const [reps, n] of counts) {
+    if (n > best || (n === best && reps > targetReps)) {
+      best = n;
+      targetReps = reps;
+    }
+  }
+
+  // The working weight is the heaviest load carried by a working set — a
+  // top-set-then-backoff session should progress from the top set, not from
+  // the average of the two.
+  const last = sessions[0];
+  const lastWeightKg = Math.max(...last.map((s) => s.weightKg!));
+  const atWeight = last.filter((s) => s.weightKg === lastWeightKg);
+  const lastReps = atWeight.map((s) => s.reps!);
+
+  const hitAll = lastReps.every((r) => r >= targetReps);
+  // "Badly missed" is more than a rep short on every set — one bad set is a
+  // bad set, not a signal to strip weight off the bar.
+  const missedBadly = lastReps.every((r) => r <= targetReps - 2);
+
+  const base = { targetReps, lastWeightKg, lastReps, sessions: sessions.length };
+  // `reason` carries NO weights, deliberately: this file is unit-agnostic, and
+  // the caller renders `weightKg` through units.ts like every other load.
+  const setWord = lastReps.length === 1 ? 'the set' : `all ${lastReps.length} sets`;
+
+  if (hitAll) {
+    return {
+      ...base,
+      action: 'increase',
+      weightKg: lastWeightKg + loadIncrementKg(lastWeightKg),
+      reason: `Hit ${targetReps} on ${setWord} last time.`,
+    };
+  }
+  if (missedBadly) {
+    // 10% off, rounded to a loadable 2.5 kg, and never below an empty bar.
+    const cut = Math.max(2.5, Math.round((lastWeightKg * 0.1) / 2.5) * 2.5);
+    return {
+      ...base,
+      action: 'deload',
+      weightKg: Math.max(2.5, lastWeightKg - cut),
+      reason: `Two or more reps short on ${setWord} — build back up.`,
+    };
+  }
+  return {
+    ...base,
+    action: 'hold',
+    weightKg: lastWeightKg,
+    reason: `Not every set reached ${targetReps} yet.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Strength standards
+// ---------------------------------------------------------------------------
+
+export const STRENGTH_LEVELS = ['Beginner', 'Novice', 'Intermediate', 'Advanced', 'Elite'] as const;
+export type StrengthLevel = (typeof STRENGTH_LEVELS)[number];
+
+/**
+ * Estimated 1RM as a multiple of bodyweight, at which each level begins.
+ * Male figures — the app has no sex on file and these thresholds differ by it,
+ * so they are stated as what they are rather than presented as universal.
+ *
+ * Keyed by the built-in exercise name. Only the barbell lifts with a settled
+ * consensus are listed: a standard for a cable fly would be invention.
+ */
+export const STRENGTH_STANDARDS: Record<string, readonly number[]> = {
+  'Squat (Barbell)':          [0.75, 1.25, 1.75, 2.5,  3.0],
+  'Bench Press (Barbell)':    [0.5,  0.75, 1.25, 1.75, 2.0],
+  'Deadlift (Barbell)':       [1.0,  1.5,  2.25, 3.0,  3.5],
+  'Overhead Press (Barbell)': [0.35, 0.55, 0.8,  1.1,  1.4],
+  'Bent Over Row (Barbell)':  [0.5,  0.75, 1.0,  1.5,  1.75],
+  'Front Squat (Barbell)':    [0.6,  1.0,  1.4,  2.0,  2.4],
+};
+
+export interface StrengthStanding {
+  ratio: number;
+  /** null until the Beginner threshold is reached. */
+  level: StrengthLevel | null;
+  next: StrengthLevel | null;
+  /** e1RM in kg still needed to reach `next`; null once Elite. */
+  toNextKg: number | null;
+  /** Progress from the current threshold to the next, 0–1. */
+  progress: number;
+}
+
+/**
+ * Where an estimated 1RM sits against the standards for that lift.
+ *
+ * Returns null when the lift has no published standard, when bodyweight is
+ * unknown, or when there is no e1RM yet — every one of those is a reason to
+ * show nothing rather than a reason to show a zero.
+ */
+export function strengthStanding(
+  exerciseName: string,
+  e1rmKg: number | null,
+  bodyweightKg: number | null,
+): StrengthStanding | null {
+  const table = STRENGTH_STANDARDS[exerciseName];
+  if (!table || e1rmKg == null || e1rmKg <= 0 || bodyweightKg == null || bodyweightKg <= 0) {
+    return null;
+  }
+  const ratio = e1rmKg / bodyweightKg;
+
+  // Index of the highest threshold reached, -1 when below Beginner.
+  let i = -1;
+  for (let k = 0; k < table.length; k++) if (ratio >= table[k]) i = k;
+
+  const level = i >= 0 ? STRENGTH_LEVELS[i] : null;
+  const next = i + 1 < table.length ? STRENGTH_LEVELS[i + 1] : null;
+  if (next == null) return { ratio, level, next: null, toNextKg: null, progress: 1 };
+
+  const floor = i >= 0 ? table[i] : 0;
+  const ceil = table[i + 1];
+  return {
+    ratio,
+    level,
+    next,
+    toNextKg: Math.max(0, ceil * bodyweightKg - e1rmKg),
+    progress: Math.min(1, Math.max(0, (ratio - floor) / (ceil - floor))),
+  };
+}
+
 export interface Totals {
   workouts: number;
   volume: number;

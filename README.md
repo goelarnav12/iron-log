@@ -149,6 +149,28 @@ extend the streak; without one, any non-zero day counts.
 fewer — above that the formula drifts far enough to be misleading, so those
 sets are dropped from the chart rather than plotted.
 
+**Sets prefill from last time.** A blank set is filled in with whatever you did
+in that slot the session before, shown dimmed. Nothing is written until you
+tick the set or type in it, so a suggestion never becomes a logged set by
+accident — but repeating last week is one tap on the tick, which is the whole
+point. The Previous column still shows what it was after you start typing.
+
+**What to put on the bar.** Each loaded exercise carries a one-line suggestion:
+hit your target reps on every working set and it says add weight, miss badly on
+all of them and it says drop some, anything between says hold. The target rep
+count is **inferred from your own history** — whatever you do most often on
+that lift — so a 5×5 programme is held to 5 and a hypertrophy block to 10 with
+nothing to configure. It is a prompt, not a prescription: nothing is prefilled
+from it and ignoring it costs you nothing.
+
+**Strength standards.** On the six main barbell lifts, your best estimated 1RM
+is shown as a multiple of your bodyweight and placed on the
+Beginner → Elite scale, with how much more you need for the next level. It
+appears only when there's a standard for that lift, a bodyweight on file, and
+an e1RM to compare — any one missing shows nothing rather than a zero. The
+thresholds are **male** figures and the card says so, because the app has no
+sex on file and these differ by it.
+
 **Deleting** is always two-step: first click arms the button for four seconds,
 second commits. There is no undo anywhere.
 

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../state/store';
 import * as db from '../lib/db';
 import type { SetType, Workout, WorkoutSet } from '../lib/types';
+import { overloadSuggestion, type OverloadSuggestion } from '../lib/stats';
 import { formatDuration, kgTo, toKg, trim } from '../lib/units';
 import { ExercisePicker } from '../components/ExercisePicker';
 import { ConfirmButton, Empty, Modal } from '../components/ui';
@@ -127,6 +128,20 @@ function ActiveWorkout({
     return map;
   }, [workouts]);
 
+  /**
+   * What to put on the bar, per exercise in this workout. Computed here rather
+   * than per block so the whole history is walked once.
+   */
+  const suggestions = useMemo(() => {
+    const map = new Map<string, OverloadSuggestion>();
+    for (const we of workout.exercises) {
+      if (map.has(we.exerciseId)) continue;
+      const s = overloadSuggestion(workouts, we.exerciseId);
+      if (s) map.set(we.exerciseId, s);
+    }
+    return map;
+  }, [workouts, workout.exercises]);
+
   const addExercises = useCallback(async (ids: string[]) => {
     let pos = workout.exercises.length;
     for (const id of ids) {
@@ -190,6 +205,7 @@ function ActiveWorkout({
               trackingType={ex?.trackingType ?? 'weight_reps'}
               sets={we.sets}
               previous={previous.get(we.exerciseId) ?? []}
+              suggestion={suggestions.get(we.exerciseId)}
               onChanged={onChanged}
               onRest={() => setRestEndsAt(Date.now() + defaultRest() * 1000)}
             />
@@ -231,14 +247,17 @@ function ActiveWorkout({
 
 // ---------------------------------------------------------------------------
 
+const SUGGESTION_MARK = { increase: '↑', hold: '→', deload: '↓' } as const;
+
 function ExerciseBlock({
-  workoutExerciseId, name, trackingType, sets, previous, onChanged, onRest,
+  workoutExerciseId, name, trackingType, sets, previous, suggestion, onChanged, onRest,
 }: {
   workoutExerciseId: string;
   name: string;
   trackingType: string;
   sets: WorkoutSet[];
   previous: WorkoutSet[];
+  suggestion?: OverloadSuggestion;
   onChanged: () => Promise<void>;
   onRest: () => void;
 }) {
@@ -269,6 +288,23 @@ function ExerciseBlock({
           ✕
         </ConfirmButton>
       </div>
+
+      {/* Only for loaded lifts: a target weight means nothing on a plank. This
+          is a prompt, not a prescription — nothing is prefilled from it, so
+          ignoring it costs nothing. */}
+      {suggestion && showWeight && !showDuration && (
+        <div className={`overload ${suggestion.action}`}>
+          <span className="mark">{SUGGESTION_MARK[suggestion.action]}</span>
+          <strong>
+            {suggestion.action === 'hold' ? 'Stay at' : 'Try'}{' '}
+            {trim(kgTo(suggestion.weightKg, units.weight))} {units.weight}
+          </strong>
+          <span className="why">
+            {suggestion.reason} Last: {trim(kgTo(suggestion.lastWeightKg, units.weight))}{' '}
+            {units.weight} × {suggestion.lastReps.join(', ')}
+          </span>
+        </div>
+      )}
 
       <div className="set-grid head">
         <span>Set</span>
@@ -311,21 +347,52 @@ function SetRow({
   onRest: () => void;
 }) {
   const { units } = useStore();
+
+  /**
+   * A blank set is prefilled with what you did in this slot last time, so the
+   * common case — repeat last session, maybe add a rep — is one tap on the
+   * tick rather than two numbers typed at the rack.
+   *
+   * The values are only ever *offered*: nothing is written until you tick the
+   * set or blur the field, which is what makes it safe to prefill a row you
+   * might never do. They render dimmed until touched, so a suggestion never
+   * looks like something you logged.
+   */
+  const suggestFrom = set.weightKg == null && set.reps == null && set.durationS == null
+    ? previous
+    : undefined;
+
+  const shown = useCallback((s?: WorkoutSet) => ({
+    weight: s?.weightKg == null ? '' : trim(kgTo(s.weightKg, units.weight)),
+    reps: s?.reps == null ? '' : String(s.reps),
+    dur: s?.durationS == null ? '' : String(s.durationS),
+  }), [units.weight]);
+
+  const seed = shown(suggestFrom ?? set);
+
   // Inputs are strings while being edited so a half-typed "1." survives, and
   // are only parsed on the way out.
-  const [weight, setWeight] = useState(() => (set.weightKg == null ? '' : trim(kgTo(set.weightKg, units.weight))));
-  const [reps, setReps] = useState(set.reps == null ? '' : String(set.reps));
-  const [dur, setDur] = useState(set.durationS == null ? '' : String(set.durationS));
+  const [weight, setWeight] = useState(seed.weight);
+  const [reps, setReps] = useState(seed.reps);
+  const [dur, setDur] = useState(seed.dur);
+  const [suggested, setSuggested] = useState(!!suggestFrom);
 
   // Re-sync if the row is replaced by a refetch (e.g. a set was deleted above
   // it and positions shifted) but not while it's focused.
   const focused = useRef(false);
   useEffect(() => {
     if (focused.current) return;
-    setWeight(set.weightKg == null ? '' : trim(kgTo(set.weightKg, units.weight)));
-    setReps(set.reps == null ? '' : String(set.reps));
-    setDur(set.durationS == null ? '' : String(set.durationS));
-  }, [set.weightKg, set.reps, set.durationS, units.weight]);
+    const isBlank = set.weightKg == null && set.reps == null && set.durationS == null;
+    const src = isBlank && previous ? previous : set;
+    const next = shown(src);
+    setWeight(next.weight);
+    setReps(next.reps);
+    setDur(next.dur);
+    setSuggested(isBlank && !!previous);
+  }, [set, previous, shown]);
+
+  // Typing in any field makes the whole row yours, not a suggestion.
+  const claim = () => { focused.current = true; setSuggested(false); };
 
   const parsed = () => ({
     weightKg: weight === '' ? null : toKg(Number(weight), units.weight),
@@ -344,7 +411,10 @@ function SetRow({
   async function toggleDone() {
     const next = !set.completed;
     // Commit whatever is in the inputs at the same time, so ticking is a
-    // single action rather than "blur, then tick".
+    // single action rather than "blur, then tick". This is also what turns a
+    // prefilled suggestion into a logged set: tick it and last session's
+    // numbers become this session's.
+    setSuggested(false);
     await db.updateSet(set.id, { ...parsed(), completed: next });
     await onChanged();
     if (next) onRest();
@@ -372,23 +442,26 @@ function SetRow({
 
       {showDuration ? (
         <input
+          className={suggested ? 'suggested' : undefined}
           inputMode="numeric" placeholder="sec" value={dur}
-          onFocus={() => { focused.current = true; }}
+          onFocus={claim}
           onChange={(e) => setDur(e.target.value)} onBlur={() => void flush()}
         />
       ) : (
         <input
+          className={suggested ? 'suggested' : undefined}
           inputMode="decimal" placeholder={showWeight ? '0' : '—'} value={weight}
           disabled={!showWeight}
-          onFocus={() => { focused.current = true; }}
+          onFocus={claim}
           onChange={(e) => setWeight(e.target.value)} onBlur={() => void flush()}
         />
       )}
 
       {showDuration ? <span /> : (
         <input
+          className={suggested ? 'suggested' : undefined}
           inputMode="numeric" placeholder="0" value={reps}
-          onFocus={() => { focused.current = true; }}
+          onFocus={claim}
           onChange={(e) => setReps(e.target.value)} onBlur={() => void flush()}
         />
       )}

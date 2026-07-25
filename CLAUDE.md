@@ -26,7 +26,31 @@ What matters when editing:
   offline the same row after it syncs instead of a duplicate. Never let Postgres
   default the id.
 - **`src/lib/stats.ts` is pure** — no DOM, no network, no app state. All arithmetic
-  (volume, Epley e1RM, PRs, streaks) lives there so it stays testable.
+  (volume, Epley e1RM, PRs, streaks, overload suggestions, strength standards)
+  lives there so it stays testable. It is also **unit-agnostic**: it deals in kg
+  and returns numbers, never formatted strings with a unit in them.
+  `overloadSuggestion`'s `reason` deliberately carries no weights for exactly
+  that reason — the caller renders `weightKg` through `units.ts` like any other
+  load. Don't put "kg" in a string in this file.
+
+- **Prefill is an offer, not a write.** A blank set in `LiveWorkout` seeds its
+  inputs from the previous session and renders them dimmed (`.suggested`).
+  Nothing reaches IndexedDB until the row is ticked or typed in — that is what
+  makes it safe to prefill a set that may never be done, and why `finishWorkout`
+  can still drop unticked rows without inventing history. The `suggested` flag
+  clears on focus (`claim`) and on tick.
+
+- **`overloadSuggestion` infers its rep target from your own history**, over a
+  window that includes the session being judged. On a first session that means
+  3,3,2 reads as triples rather than a failed set of five — correct, since
+  there's no target to have missed yet, and it self-corrects once a second
+  session exists. Don't "fix" it by hardcoding a rep range.
+
+- **Strength standards are male thresholds** (`STRENGTH_STANDARDS`), stated as
+  such in the UI because the app has no sex on file and the numbers differ by
+  it. Keyed by built-in exercise NAME, so renaming a seeded exercise silently
+  drops its standard. Only the barbell lifts with a settled consensus are
+  listed — a standard for a cable fly would be invention.
 - **Only `completed` sets count** toward any statistic; warmups are additionally
   excluded from volume. `finishWorkout()` deletes unticked rows rather than
   storing nulls.
