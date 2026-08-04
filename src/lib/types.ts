@@ -102,24 +102,45 @@ export interface BodyMeasurement {
   notes: string | null;
 }
 
+/**
+ * What a counter accumulates. A plank is held, not repped, so a counter on a
+ * duration-tracked exercise counts seconds.
+ *
+ * Derived from the exercise every time, never stored on the counter — the
+ * library already knows, and a second copy could only ever disagree with it.
+ */
+export type CounterUnit = 'reps' | 'seconds';
+
+export const counterUnit = (t: TrackingType): CounterUnit =>
+  (t === 'duration' ? 'seconds' : 'reps');
+
 /** A movement you accumulate through the day rather than train in a session. */
 export interface Counter {
   id: string;
   userId: string;
   exerciseId: string;
-  /** Reps/day you're aiming for. Null means any non-zero day counts. */
+  /**
+   * Per-day target, in the counter's own unit — reps, or seconds for a held
+   * exercise. Null means any non-zero day counts.
+   */
   dailyGoal: number | null;
   position: number;
 }
 
-/** One set, not a daily total — the daily total is a sum of these. */
+/**
+ * One set, not a daily total — the daily total is a sum of these.
+ *
+ * Exactly one of `reps` / `durationS` is filled, matching the counter's unit,
+ * the same way a `WorkoutSet` carries one or the other.
+ */
 export interface CounterEntry {
   id: string;
   userId: string;
   counterId: string;
   /** Local calendar date, YYYY-MM-DD. See migration_002 for why not a timestamp. */
   date: string;
-  reps: number;
+  reps: number | null;
+  durationS: number | null;
 }
 
 // Order matters: this drives the filter chips on the library and picker

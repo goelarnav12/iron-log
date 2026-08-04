@@ -6,7 +6,9 @@
 // of unchecked rows, and letting those into a total would make every number
 // jump around while you lift.
 
-import type { BodyMeasurement, Exercise, Workout, WorkoutSet } from './types';
+import type {
+  BodyMeasurement, CounterUnit, Exercise, Workout, WorkoutSet,
+} from './types';
 
 export const isCounted = (s: WorkoutSet) => s.completed;
 
@@ -256,19 +258,36 @@ export function weightSeries(
 }
 
 // ---------------------------------------------------------------------------
-// Daily rep counters
+// Daily counters
 //
 // A day's total has TWO sources: the counter entries you tap in through the
 // day, and any completed sets of the same exercise inside that day's workouts.
 // They're summed but kept separately in the return value, because a total you
 // can't explain is a total you stop trusting — the UI shows the split.
+//
+// Everything here is amount-in-a-unit, not reps: a plank counter accumulates
+// seconds. The unit comes from the exercise (`counterUnit`) and is passed in,
+// so nothing below has to know what a tracking type is. As everywhere else in
+// this file the numbers are bare — formatting a duration is the caller's job.
 // ---------------------------------------------------------------------------
+
+/** The two amount columns of a counter entry, or of a workout set. */
+type Amounts = { reps: number | null; durationS: number | null };
+
+/**
+ * What one entry contributes, in the counter's unit. An entry filled in the
+ * OTHER unit counts zero rather than being added blindly — that only happens
+ * if an exercise's tracking type is flipped after some history exists, and
+ * summing seconds into reps would produce a number that means nothing.
+ */
+export const counterEntryAmount = (e: Amounts, unit: CounterUnit): number =>
+  (unit === 'seconds' ? e.durationS : e.reps) ?? 0;
 
 export interface CounterDay {
   date: string;
-  /** Reps tapped into the counter. */
+  /** Amount tapped into the counter. */
   entries: number;
-  /** Reps of the same exercise found in that day's workouts. */
+  /** Amount of the same exercise found in that day's workouts. */
   fromWorkouts: number;
   total: number;
   /** True when a goal is set and the total reached it. */
@@ -276,12 +295,12 @@ export interface CounterDay {
 }
 
 /**
- * Reps of one exercise, per local day, from completed workout sets.
+ * One exercise's amount per local day, from completed workout sets.
  * Warmups count here — a warmup push-up is still a push-up you did, which is
  * the opposite of how `countsForVolume` treats them for training volume.
  */
-export function workoutRepsByDay(
-  workouts: Workout[], exerciseId: string,
+export function workoutAmountByDay(
+  workouts: Workout[], exerciseId: string, unit: CounterUnit,
 ): Map<string, number> {
   const acc = new Map<string, number>();
   for (const w of workouts) {
@@ -289,8 +308,9 @@ export function workoutRepsByDay(
     for (const we of w.exercises) {
       if (we.exerciseId !== exerciseId) continue;
       for (const s of we.sets) {
-        if (!isCounted(s) || !s.reps) continue;
-        acc.set(day, (acc.get(day) ?? 0) + s.reps);
+        const amount = counterEntryAmount(s, unit);
+        if (!isCounted(s) || !amount) continue;
+        acc.set(day, (acc.get(day) ?? 0) + amount);
       }
     }
   }
@@ -299,19 +319,20 @@ export function workoutRepsByDay(
 
 /** Per-day totals for one counter, oldest first, days with zero omitted. */
 export function counterDays(
-  entries: { date: string; reps: number }[],
-  workoutReps: Map<string, number>,
+  entries: (Amounts & { date: string })[],
+  workoutAmounts: Map<string, number>,
   dailyGoal: number | null,
+  unit: CounterUnit,
 ): CounterDay[] {
   const byDay = new Map<string, { entries: number; fromWorkouts: number }>();
   for (const e of entries) {
     const cur = byDay.get(e.date) ?? { entries: 0, fromWorkouts: 0 };
-    cur.entries += e.reps;
+    cur.entries += counterEntryAmount(e, unit);
     byDay.set(e.date, cur);
   }
-  for (const [day, reps] of workoutReps) {
+  for (const [day, amount] of workoutAmounts) {
     const cur = byDay.get(day) ?? { entries: 0, fromWorkouts: 0 };
-    cur.fromWorkouts += reps;
+    cur.fromWorkouts += amount;
     byDay.set(day, cur);
   }
   return [...byDay.entries()]
@@ -342,10 +363,11 @@ export interface CounterStats {
  */
 export function counterStats(
   days: CounterDay[],
-  entries: { reps: number }[],
+  entries: Amounts[],
   workoutBestSet: number,
   todayKey: string,
   dailyGoal: number | null,
+  unit: CounterUnit,
 ): CounterStats {
   // The goal has to be passed in, not inferred from the days: a goal that
   // exists but has never been hit would otherwise look like no goal at all,
@@ -386,7 +408,7 @@ export function counterStats(
 
   return {
     today: todayDay?.total ?? 0,
-    bestSet: Math.max(0, workoutBestSet, ...entries.map((e) => e.reps)),
+    bestSet: Math.max(0, workoutBestSet, ...entries.map((e) => counterEntryAmount(e, unit))),
     bestDay: best ? { date: best.date, total: best.total } : null,
     currentStreak,
     longestStreak,
@@ -395,14 +417,17 @@ export function counterStats(
   };
 }
 
-/** Best single completed set of one exercise across all workouts. */
-export function workoutBestSetReps(workouts: Workout[], exerciseId: string): number {
+/** Best single completed set of one exercise across all workouts, in `unit`. */
+export function workoutBestSetAmount(
+  workouts: Workout[], exerciseId: string, unit: CounterUnit,
+): number {
   let best = 0;
   for (const w of workouts) {
     for (const we of w.exercises) {
       if (we.exerciseId !== exerciseId) continue;
       for (const s of we.sets) {
-        if (isCounted(s) && (s.reps ?? 0) > best) best = s.reps ?? 0;
+        const amount = counterEntryAmount(s, unit);
+        if (isCounted(s) && amount > best) best = amount;
       }
     }
   }

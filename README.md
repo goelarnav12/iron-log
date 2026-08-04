@@ -20,9 +20,12 @@ these three files in order:
 1. `schema.sql` — tables, indexes, RLS policies
 2. `migration_001_offline_sync.sql` — adds the `updated_at` / `deleted_at`
    columns the offline sync needs. **Required**: without it every sync fails.
-3. `migration_002_counters.sql` — the daily rep-counter tables. Also required:
+3. `migration_002_counters.sql` — the daily counter tables. Also required:
    the sync pulls every table, so a missing one fails the whole cycle.
-4. `seed_exercises.sql` — the ~295 built-in exercises. Skipping this is the
+4. `migration_003_counter_duration.sql` — adds `counter_entries.duration_s` so
+   a counter can hold time. **Required**, and required *before* deploying the
+   app that writes it: without the column every counter-entry push fails.
+5. `seed_exercises.sql` — the ~295 built-in exercises. Skipping this is the
    reason for an empty exercise picker; `schema.sql` only creates the table.
 
 **3. Point the app at it.**
@@ -140,6 +143,14 @@ but shown split, since a total you can't account for is one you stop trusting.
 Entries are stored per set rather than as a daily total, which is what makes
 "best single set" possible. The date is the device's LOCAL day: an evening set
 would otherwise be filed under tomorrow for anyone east of UTC.
+
+A counter on a **duration-tracked exercise counts seconds, not reps** — you
+hold a plank, you don't rep it. The unit is read off the exercise's
+`trackingType` every time rather than stored on the counter, so it can't
+disagree with the library, and the entry lands in `reps` or `duration_s`
+accordingly (exactly one, enforced by a check constraint). The card then swaps
+its quick-add chips for times, adds a stopwatch, and reads its goal, stats,
+axis and tooltip as `m:ss`.
 
 Streaks tolerate today being empty — at 9am you haven't done them yet — and
 break only once yesterday is missed. With a goal set, only days reaching it

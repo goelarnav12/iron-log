@@ -469,6 +469,22 @@ textarea { resize: vertical; min-height: 68px; }
 .chip.quick:hover { border-color: var(--accent); color: var(--accent); }
 .chip.quick:disabled { opacity: 0.5; }
 
+/* Hold stopwatch. Full width and tall, because you hit Stop with shaking arms
+   halfway through a plank and the target has to be impossible to miss. */
+.hold-running { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
+.btn.hold {
+  width: 100%; padding: 13px 20px; font-size: 15.5px; margin-bottom: 10px;
+}
+.hold-running .btn.hold { margin-bottom: 0; }
+.btn.hold.running {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+}
+.btn.hold.running:hover { background: var(--accent-soft); filter: brightness(1.15); }
+/* Tabular figures: the seconds tick over without the label jittering sideways. */
+.btn.hold .t {
+  font-family: var(--mono); font-size: 18px; font-variant-numeric: tabular-nums;
+}
+
 /* ---------------------------------------------------------------------------
    Sync indicator
 --------------------------------------------------------------------------- */

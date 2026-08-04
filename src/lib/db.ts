@@ -23,8 +23,8 @@ import {
 } from './idb';
 import { refreshPending, syncNow } from './sync';
 import type {
-  BodyMeasurement, CardioSession, Counter, CounterEntry, Exercise, Routine,
-  RoutineExercise, Workout, WorkoutExercise, WorkoutSet,
+  BodyMeasurement, CardioSession, Counter, CounterEntry, CounterUnit, Exercise,
+  Routine, RoutineExercise, Workout, WorkoutExercise, WorkoutSet,
 } from './types';
 
 const now = () => new Date().toISOString();
@@ -340,6 +340,12 @@ export async function fetchCounters(): Promise<Counter[]> {
 
 export async function fetchCounterEntries(): Promise<CounterEntry[]> {
   return (await allRows<LocalCounterEntry>('counterEntries'))
+    // Rows written before duration counters existed carry no durationS key.
+    // Normalising here means no screen has to know that.
+    .map((r): CounterEntry => ({
+      id: r.id, userId: r.userId, counterId: r.counterId, date: r.date,
+      reps: r.reps ?? null, durationS: r.durationS ?? null,
+    }))
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
@@ -378,15 +384,20 @@ export async function deleteCounter(id: string): Promise<void> {
 }
 
 /**
- * Log a set. `date` defaults to the LOCAL day — using an ISO timestamp's date
- * portion would file an evening set under tomorrow for anyone east of UTC.
+ * Log a set — `amount` is reps, or seconds when the counter's exercise is
+ * duration-tracked. It lands in whichever column the unit names, never both.
+ *
+ * `date` defaults to the LOCAL day — using an ISO timestamp's date portion
+ * would file an evening set under tomorrow for anyone east of UTC.
  */
 export async function addCounterEntry(
-  counterId: string, reps: number, date?: string,
+  counterId: string, amount: number, unit: CounterUnit, date?: string,
 ): Promise<CounterEntry> {
   const row: LocalCounterEntry = {
-    id: uid(), userId: requireUser(), counterId,
-    date: date ?? localDay(), reps, ...stamp(),
+    id: uid(), userId: requireUser(), counterId, date: date ?? localDay(),
+    reps: unit === 'reps' ? amount : null,
+    durationS: unit === 'seconds' ? amount : null,
+    ...stamp(),
   };
   await putRow('counterEntries', row);
   kick();

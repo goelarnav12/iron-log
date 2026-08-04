@@ -116,11 +116,14 @@ export const MAPPERS: Record<TableName, Mapper> = {
   counterEntries: {
     fromPg: (r) => ({
       id: r.id, userId: r.user_id, counterId: r.counter_id,
-      date: r.date, reps: r.reps, ...sync(r),
+      date: r.date, reps: r.reps ?? null, durationS: r.duration_s ?? null, ...sync(r),
     }),
+    // `?? null` on the way out too: rows written before migration_003 have no
+    // durationS key at all, and an undefined would push as "leave alone"
+    // against a check constraint that demands exactly one of the two.
     toPg: (r) => ({
       id: r.id, user_id: r.userId, counter_id: r.counterId,
-      date: r.date, reps: r.reps, ...syncOut(r),
+      date: r.date, reps: r.reps ?? null, duration_s: r.durationS ?? null, ...syncOut(r),
     }),
   },
   measurements: {
