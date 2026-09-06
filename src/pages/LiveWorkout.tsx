@@ -152,6 +152,16 @@ function ActiveWorkout({
     await onChanged();
   }, [workout, onChanged]);
 
+  /**
+   * Order is a plan, not a record — the rack you wanted is taken, so you do
+   * the next thing first. Moving a block reorders it for the rest of the
+   * session and in history, and carries its logged sets with it.
+   */
+  const move = useCallback(async (workoutExerciseId: string, delta: number) => {
+    await db.moveWorkoutExercise(workout.id, workoutExerciseId, delta);
+    await onChanged();
+  }, [workout.id, onChanged]);
+
   async function finish() {
     await db.updateWorkout(workout.id, { name });
     await db.finishWorkout(workout.id, notes || null);
@@ -195,7 +205,7 @@ function ActiveWorkout({
           <Empty>Nothing logged yet. Add your first exercise below.</Empty>
         )}
 
-        {workout.exercises.map((we) => {
+        {workout.exercises.map((we, i) => {
           const ex = exercisesById.get(we.exerciseId);
           return (
             <ExerciseBlock
@@ -206,6 +216,9 @@ function ActiveWorkout({
               sets={we.sets}
               previous={previous.get(we.exerciseId) ?? []}
               suggestion={suggestions.get(we.exerciseId)}
+              first={i === 0}
+              last={i === workout.exercises.length - 1}
+              onMove={(delta) => void move(we.id, delta)}
               onChanged={onChanged}
               onRest={() => setRestEndsAt(Date.now() + defaultRest() * 1000)}
             />
@@ -250,7 +263,8 @@ function ActiveWorkout({
 const SUGGESTION_MARK = { increase: '↑', hold: '→', deload: '↓' } as const;
 
 function ExerciseBlock({
-  workoutExerciseId, name, trackingType, sets, previous, suggestion, onChanged, onRest,
+  workoutExerciseId, name, trackingType, sets, previous, suggestion,
+  first, last, onMove, onChanged, onRest,
 }: {
   workoutExerciseId: string;
   name: string;
@@ -258,6 +272,9 @@ function ExerciseBlock({
   sets: WorkoutSet[];
   previous: WorkoutSet[];
   suggestion?: OverloadSuggestion;
+  first: boolean;
+  last: boolean;
+  onMove: (delta: number) => void;
   onChanged: () => Promise<void>;
   onRest: () => void;
 }) {
@@ -279,6 +296,8 @@ function ExerciseBlock({
     <div className="ex-block">
       <div className="ex-head">
         <span className="name">{name}</span>
+        <button className="btn ghost sm move" onClick={() => onMove(-1)} disabled={first} aria-label={`Move ${name} up`}>↑</button>
+        <button className="btn ghost sm move" onClick={() => onMove(1)} disabled={last} aria-label={`Move ${name} down`}>↓</button>
         <ConfirmButton
           armed={removeArmed}
           setArmed={setRemoveArmed}

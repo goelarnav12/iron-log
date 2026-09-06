@@ -54,9 +54,23 @@ What matters when editing:
 - **Only `completed` sets count** toward any statistic; warmups are additionally
   excluded from volume. `finishWorkout()` deletes unticked rows rather than
   storing nulls.
+- **Exercise order is editable, live and after the fact** (`moveWorkoutExercise`).
+  It rewrites every sibling's position from the sorted order rather than swapping
+  two numbers, because a removed exercise leaves a gap that makes the next swap
+  ambiguous. Timestamps edited through the UI carry MINUTE precision — a
+  `datetime-local` has no seconds field — so the editor compares the *rendered*
+  values and skips the write when nothing changed, rather than silently
+  truncating a start time you only looked at.
 - **No client cache, no optimistic updates.** Mutate, then refetch via the
-  `refresh*` functions on the store. The exception is `LiveWorkout.tsx`, where set
-  inputs are local state flushed on blur.
+  `refresh*` functions on the store. The exceptions are `LiveWorkout.tsx` and
+  `WorkoutDetail.tsx`'s edit mode, where set inputs (and, in the editor, the
+  name/notes/timestamps) are local state flushed on blur.
+- **Editing a finished workout is not a draft.** `WorkoutDetail`'s edit mode
+  writes through on every blur, so "Done" only hides the inputs — unlike
+  `RoutineEditor`, which builds a draft and saves once. That is deliberate: the
+  stats and PR badges on the same screen re-derive as you type. Sets added there
+  are seeded `completed: true`, because a finished workout has no tick left to
+  press and an unticked row counts toward nothing.
 - Built-in exercises are the rows with `user_id IS NULL`: world-readable, and no
   RLS write policy matches them. Custom exercises carry your uid.
 - `schema.sql` describes the current shape for a fresh project. Changes to a live

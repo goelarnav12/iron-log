@@ -176,16 +176,43 @@ export async function updateWorkoutExercise(
   kick();
 }
 
+/**
+ * Move an exercise one slot up (delta -1) or down (+1) within its workout.
+ *
+ * Positions are rewritten from the sorted order rather than just swapping two
+ * numbers, because removing an exercise leaves a gap and a gap makes the next
+ * swap ambiguous. Only rows whose position actually changed are written, so a
+ * move costs two outbox entries and syncs as an ordinary last-write-wins edit.
+ */
+export async function moveWorkoutExercise(
+  workoutId: string, id: string, delta: number,
+): Promise<void> {
+  const rows = (await rowsByIndex<LocalWorkoutExercise>('workoutExercises', 'workoutId', workoutId))
+    .sort((a, b) => a.position - b.position);
+  const i = rows.findIndex((r) => r.id === id);
+  const j = i + delta;
+  if (i < 0 || j < 0 || j >= rows.length) return;
+  [rows[i], rows[j]] = [rows[j], rows[i]];
+  for (const [position, row] of rows.entries()) {
+    if (row.position === position) continue;
+    await putRow('workoutExercises', { ...row, position, updatedAt: now() });
+  }
+  kick();
+}
+
 export async function addSet(
   workoutExerciseId: string,
   position: number,
-  seed?: Partial<Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationS' | 'setType'>>,
+  seed?: Partial<Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationS' | 'setType' | 'completed'>>,
 ): Promise<WorkoutSet> {
   const row: LocalSet = {
     id: uid(), workoutExerciseId, position,
     weightKg: seed?.weightKg ?? null, reps: seed?.reps ?? null,
     durationS: seed?.durationS ?? null, setType: seed?.setType ?? 'normal',
-    completed: false, ...stamp(),
+    // Live logging starts a set unticked and the tick is the act of doing it.
+    // Editing a finished workout has no such moment, so that caller seeds true
+    // — an untickable row there would silently count for nothing.
+    completed: seed?.completed ?? false, ...stamp(),
   };
   await putRow('sets', row);
   kick();

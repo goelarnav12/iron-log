@@ -2,7 +2,9 @@
 
 A personal gym, cardio and body tracker. Workout logging with routines and a
 live rest timer, an exercise library with per-exercise strength history, and
-bodyweight/tape-measurement trends.
+bodyweight/tape-measurement trends. Exercises reorder mid-session, and a
+finished workout stays editable — its clock, name, notes, sets and exercise
+list — from its page in History.
 
 Vite + React + TypeScript, Supabase for auth and storage, installable as a PWA.
 Single user by design — every row is scoped to your account by row level

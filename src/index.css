@@ -382,12 +382,30 @@ textarea { resize: vertical; min-height: 68px; }
   display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
 }
 .ex-head .name { font-weight: 650; color: var(--accent); flex: 1; }
+/* Reorder arrows. Narrow enough to sit beside the remove button on a phone,
+   still a 32px tap target. */
+.ex-head .btn.move { padding: 6px 8px; min-width: 32px; font-size: 14px; }
+
+/* Start and end sit side by side where there's room, and stack on a phone —
+   a datetime-local control is wide and squeezing two into 360px is unusable. */
+.time-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 520px) {
+  .time-fields { grid-template-columns: 1fr; }
+}
 
 /* Grid columns line up with the header row in SetRow. */
 .set-grid {
   display: grid;
   grid-template-columns: 42px 1fr 68px 68px 42px 34px;
   gap: 7px; align-items: center;
+}
+/* Editing a finished workout: no Previous column to beat and no tick to
+   press. The inputs are capped rather than left at 1fr — a rep count stretched
+   across a desktop window is a hard thing to read a number out of — and the
+   spare width goes to a spacer, keeping the delete button at the right edge
+   where it sits on the live screen. */
+.set-grid.edit {
+  grid-template-columns: 42px minmax(64px, 108px) minmax(64px, 108px) 1fr 34px;
 }
 .set-grid.head {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em;
