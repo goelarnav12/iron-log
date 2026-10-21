@@ -85,7 +85,7 @@ export function ExercisePicker({
               className="row"
               style={{
                 cursor: 'pointer',
-                borderColor: i >= 0 ? 'var(--accent)' : undefined,
+                borderColor: i >= 0 ? 'var(--accent-text)' : undefined,
                 background: i >= 0 ? 'var(--accent-soft)' : undefined,
               }}
               onClick={() => toggle(e.id)}
@@ -97,7 +97,7 @@ export function ExercisePicker({
                   {e.userId && ' · custom'}
                 </div>
               </div>
-              {i >= 0 && <span className="badge" style={{ background: 'var(--accent)', color: '#0b0d14' }}>{i + 1}</span>}
+              {i >= 0 && <span className="badge accent">{i + 1}</span>}
             </div>
           );
         })}

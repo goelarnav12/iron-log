@@ -10,6 +10,7 @@
 // flushes immediately, since that's the moment the number is final.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useStore } from '../state/store';
 import * as db from '../lib/db';
 import type { SetType, Workout, WorkoutSet } from '../lib/types';
@@ -26,68 +27,16 @@ const SET_TYPE_CYCLE: SetType[] = ['normal', 'warmup', 'failure', 'drop'];
 const SET_TYPE_MARK: Record<SetType, string> = { normal: '', warmup: 'W', failure: 'F', drop: 'D' };
 
 export function LiveWorkout() {
-  const { activeWorkout, routines, refreshActive, refreshWorkouts, exercisesById } = useStore();
-  const [busy, setBusy] = useState(false);
+  const { activeWorkout, refreshActive, refreshWorkouts, ready } = useStore();
 
-  async function start(name: string, routineId?: string) {
-    setBusy(true);
-    try {
-      const routine = routines.find((r) => r.id === routineId);
-      await db.startWorkout({
-        name,
-        routineId: routineId ?? null,
-        exercises: routine?.exercises.map((e) => ({
-          exerciseId: e.exerciseId,
-          sets: e.targetSets,
-          notes: e.notes,
-        })) ?? [],
-      });
-      await refreshActive();
-    } finally {
-      setBusy(false);
-    }
-  }
+  if (!ready) return <div className="page"><span className="faint">Loading…</span></div>;
+  // Starting a session happens on Train; this screen only ever shows one
+  // that's running. Finishing or discarding lands you back there too.
+  if (!activeWorkout) return <Navigate to="/train" replace />;
 
-  if (activeWorkout) {
-    return <ActiveWorkout workout={activeWorkout} onChanged={refreshActive} onFinished={async () => {
-      await Promise.all([refreshActive(), refreshWorkouts()]);
-    }} />;
-  }
-
-  return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Start a workout</h1>
-          <div className="sub">Pick a routine, or start from nothing and add as you go.</div>
-        </div>
-      </div>
-
-      <button
-        className="btn primary lg block"
-        disabled={busy}
-        onClick={() => void start('Workout')}
-      >
-        ⚡ Start empty workout
-      </button>
-
-      <div className="section-head"><h2>From a routine</h2></div>
-      {routines.length === 0 && <Empty>No routines yet — build one under Routines.</Empty>}
-      {routines.map((r) => (
-        <div key={r.id} className="row">
-          <div className="grow">
-            <div className="title">{r.name}</div>
-            <div className="meta">
-              {r.exercises.length
-                ? r.exercises.map((e) => exercisesById.get(e.exerciseId)?.name ?? '?').join(' · ')
-                : 'Empty routine'}
-            </div>
-          </div>
-          <button className="btn sm" disabled={busy} onClick={() => void start(r.name, r.id)}>Start</button>
-        </div>
-      ))}
-    </div>
-  );
+  return <ActiveWorkout workout={activeWorkout} onChanged={refreshActive} onFinished={async () => {
+    await Promise.all([refreshActive(), refreshWorkouts()]);
+  }} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,14 +129,16 @@ function ActiveWorkout({
   return (
     <>
       <div className="live-bar">
-        <span className="timer">{formatDuration(elapsed)}</span>
-        <span className="faint" style={{ fontSize: 13 }}>{completedSets} sets</span>
+        <div>
+          <div className="eyebrow">{completedSets} {completedSets === 1 ? 'set' : 'sets'} done</div>
+          <span className="timer">{formatDuration(elapsed)}</span>
+        </div>
         <div style={{ flex: 1 }} />
         <SyncIndicator />
         <ConfirmButton armed={discardArmed} setArmed={setDiscardArmed} onConfirm={() => void discard()} armedLabel="Discard?">
           Discard
         </ConfirmButton>
-        <button className="btn primary sm" onClick={() => setFinishing(true)}>Finish</button>
+        <button className="btn primary" onClick={() => setFinishing(true)}>Finish</button>
       </div>
 
       <div className="page">
@@ -195,9 +146,11 @@ function ActiveWorkout({
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => void db.updateWorkout(workout.id, { name })}
+          aria-label="Workout name"
           style={{
             background: 'transparent', border: 'none', padding: 0,
-            fontSize: 24, fontWeight: 650, marginBottom: 18,
+            fontFamily: 'var(--display)', fontSize: 40, fontWeight: 800,
+            textTransform: 'uppercase', lineHeight: 1, marginBottom: 18,
           }}
         />
 
@@ -225,7 +178,7 @@ function ActiveWorkout({
           );
         })}
 
-        <button className="btn block lg" style={{ marginTop: 8 }} onClick={() => setPicking(true)}>
+        <button className="btn primary block lg" style={{ marginTop: 8 }} onClick={() => setPicking(true)}>
           + Add exercise
         </button>
       </div>
@@ -347,7 +300,7 @@ function ExerciseBlock({
         />
       ))}
 
-      <button className="btn sm block" style={{ marginTop: 4 }} onClick={() => void addSet()}>+ Add set</button>
+      <button className="btn sm block" style={{ marginTop: 4, borderStyle: 'dashed', background: 'transparent' }} onClick={() => void addSet()}>+ Add set</button>
     </div>
   );
 }

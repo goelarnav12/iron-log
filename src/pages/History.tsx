@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../state/store';
+import { SubNav } from '../components/SubNav';
 import { WorkoutRow } from '../components/WorkoutRow';
 import { Empty } from '../components/ui';
 import { totals } from '../lib/stats';
@@ -47,6 +48,7 @@ export function History() {
           </div>
         </div>
       </div>
+      <SubNav section="progress" />
 
       <input
         placeholder="Search by workout, exercise or note…"

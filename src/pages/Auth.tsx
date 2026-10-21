@@ -31,7 +31,7 @@ export function Auth() {
           </p>
 
           {err && <div className="error-note">{err}</div>}
-          {note && <div className="error-note" style={{ background: 'var(--accent-soft)', borderColor: 'var(--accent)', color: 'var(--accent)' }}>{note}</div>}
+          {note && <div className="error-note" style={{ background: 'var(--accent-soft)', borderColor: 'var(--accent-text)', color: 'var(--accent-text)' }}>{note}</div>}
 
           <form
             onSubmit={(e) => { e.preventDefault(); void run('in'); }}

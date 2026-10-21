@@ -93,14 +93,37 @@ src/lib/remote.ts     the only file that talks to Supabase; all snake_case
 src/lib/stats.ts      pure arithmetic — volume, e1RM, PRs, streaks
 src/lib/units.ts      kg/lb, cm/in, km/mi, duration parsing and formatting
 src/state/store.tsx   auth + all app data in one context
+src/nav.ts            the four sections and which pages live under each
 src/pages/            one file per route
-src/components/       shared pieces (modal, stat tile, exercise picker)
+src/components/       shared pieces (modal, stat tile, icons, exercise picker)
 ```
+
+## Screens
+
+Four sections, as a tab bar on a phone and a sidebar on desktop:
+
+- **Today** — the home screen. What to do next (resume the running workout, or
+  the routine you've done least recently), this week against your weekly
+  target, days since each muscle group was trained, the daily counters with a
+  one-tap add, PRs from the last two weeks, and the bodyweight trend.
+  **Daily** (the full counter screen) sits under it.
+- **Train** — start an empty workout or a routine, log cardio, and manage
+  routines. The live workout opens full-screen at `/workout`.
+- **Progress** — History, Exercises, Body, Cardio and Trends (weekly volume,
+  sets per muscle, the consistency heatmap).
+- **You** — theme, weekly target, units, rest timer, sync and sign-out.
+
+URLs are flat (`/history`, not `/progress/history`), so links from before the
+redesign still resolve. The layout is "Plate": Barlow Condensed for headings
+and numbers, square controls. Colours are a theme picked under You — Volt
+(graphite and lime, the default), Plate, Cobalt, Crimson, Mint and
+Ultraviolet, all dark. Each is one `[data-theme]` block of tokens at the top of
+`index.css`; `src/theme.ts` lists them and saves the choice on the device.
 
 ## How it works
 
 **Units.** Everything is stored in kg, cm, metres and seconds. The kg/lb and
-cm/in toggles in Settings are display-only, converted at the edge of the UI in
+cm/in toggles under You are display-only, converted at the edge of the UI in
 `units.ts`. Switching units never rewrites a stored number, so you can flip
 back and forth freely.
 
@@ -138,7 +161,7 @@ looping forever.
 are further excluded from volume. Finishing a workout deletes whatever was left
 unticked rather than storing a row of nulls.
 
-**Daily counters** (the Daily tab) track a movement you accumulate through the
+**Daily counters** (Today › Daily) track a movement you accumulate through the
 day rather than train in a session. A day's total is your tapped-in entries
 *plus* completed sets of the same exercise from that day's workouts — summed,
 but shown split, since a total you can't account for is one you stop trusting.

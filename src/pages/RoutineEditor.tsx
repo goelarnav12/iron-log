@@ -47,7 +47,7 @@ export function RoutineEditor() {
     try {
       await db.saveRoutine({ id: existing?.id, name: name.trim(), notes: notes || null }, items);
       await refreshRoutines();
-      nav('/routines');
+      nav('/train');
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -63,7 +63,7 @@ export function RoutineEditor() {
           <div className="sub">Exercises run in this order when you start it.</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn ghost" onClick={() => nav('/routines')}>Cancel</button>
+          <button className="btn ghost" onClick={() => nav('/train')}>Cancel</button>
           <button className="btn primary" onClick={() => void save()} disabled={busy}>Save</button>
         </div>
       </div>

@@ -1,25 +1,21 @@
-import { Link } from 'react-router-dom';
+// The long view: how much, how balanced, how consistent. These were the home
+// screen before the redesign; they answer "what happened", which is a
+// Progress question — Today answers "what now".
+
 import {
   Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { useStore } from '../state/store';
 import { Empty, Stat } from '../components/ui';
-import { SyncIndicator } from '../components/SyncIndicator';
-import {
-  dayKey, setsByMuscle, totals, volumeByWeek, weekKey, weekStreak,
-  workoutSetCount, workoutVolume,
-} from '../lib/stats';
+import { SubNav } from '../components/SubNav';
+import { dayKey, setsByMuscle, totals, volumeByWeek, workoutSetCount } from '../lib/stats';
 import type { Workout } from '../lib/types';
 import { formatDurationShort, kgTo, trim } from '../lib/units';
-import { WorkoutRow } from '../components/WorkoutRow';
 
-export function Dashboard() {
-  const { workouts, exercisesById, measurements, units, ready, error } = useStore();
+export function Trends() {
+  const { workouts, exercisesById, units, ready, error } = useStore();
 
-  const thisWeek = weekKey(new Date().toISOString());
-  const weekWorkouts = workouts.filter((w) => weekKey(w.startedAt) === thisWeek);
   const t = totals(workouts);
-  const streak = weekStreak(workouts);
 
   // Last 12 weeks only: a bar chart of three years of training is unreadable
   // and the question ("am I training enough lately?") is a recent one.
@@ -29,8 +25,6 @@ export function Dashboard() {
   const muscle = setsByMuscle(
     workouts.filter((w) => Date.parse(w.startedAt) >= recentCut), exercisesById);
 
-  const latestWeight = measurements.find((m) => m.weightKg != null);
-
   if (error) return <div className="page"><div className="error-note">{error}</div></div>;
   if (!ready) return <div className="page"><span className="faint">Loading…</span></div>;
 
@@ -38,36 +32,17 @@ export function Dashboard() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Home</h1>
-          <div className="sub">
-            {t.workouts ? `${t.workouts} workouts logged` : 'Nothing logged yet'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <SyncIndicator />
-          <Link to="/workout" className="btn primary">⚡ Start workout</Link>
+          <h1>Trends</h1>
+          <div className="sub">Volume, balance and consistency.</div>
         </div>
       </div>
+      <SubNav section="progress" />
 
       <div className="stat-grid">
-        <Stat
-          label="This week"
-          value={weekWorkouts.length}
-          unit={weekWorkouts.length === 1 ? 'workout' : 'workouts'}
-          sub={`${weekWorkouts.reduce((n, w) => n + workoutSetCount(w), 0)} sets`}
-        />
-        <Stat label="Week streak" value={streak} unit={streak === 1 ? 'week' : 'weeks'} />
-        <Stat
-          label="Volume this week"
-          value={trim(kgTo(weekWorkouts.reduce((n, w) => n + workoutVolume(w), 0), units.weight), 0)}
-          unit={units.weight}
-        />
-        <Stat
-          label="Bodyweight"
-          value={latestWeight ? trim(kgTo(latestWeight.weightKg!, units.weight), 1) : '—'}
-          unit={latestWeight ? units.weight : undefined}
-          sub={latestWeight ? latestWeight.date : 'Log one under Body'}
-        />
+        <Stat label="Workouts" value={t.workouts} />
+        <Stat label="Sets" value={t.sets} />
+        <Stat label="Moved" value={trim(kgTo(t.volume, units.weight), 0)} unit={units.weight} />
+        <Stat label="Under the bar" value={formatDurationShort(t.durationS)} />
       </div>
 
       <div className="section-head"><h2>Weekly volume</h2></div>
@@ -80,7 +55,7 @@ export function Dashboard() {
                 <XAxis dataKey="week" tickFormatter={(w: string) => w.slice(-3)} tickLine={false} axisLine={false} />
                 <YAxis tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))} tickLine={false} axisLine={false} width={40} />
                 <Tooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  cursor={{ fill: 'var(--chart-cursor)' }}
                   content={({ active, payload, label }) =>
                     active && payload?.length ? (
                       <div className="tooltip">
@@ -106,7 +81,7 @@ export function Dashboard() {
                 <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
                 <YAxis type="category" dataKey="muscle" width={82} tickLine={false} axisLine={false} />
                 <Tooltip
-                  cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                  cursor={{ fill: 'var(--chart-cursor)' }}
                   content={({ active, payload, label }) =>
                     active && payload?.length ? (
                       <div className="tooltip"><div className="k">{label}</div><div>{payload[0].value} sets</div></div>
@@ -124,19 +99,6 @@ export function Dashboard() {
 
       <div className="section-head"><h2>Consistency</h2></div>
       <div className="card scroll-x"><Heatmap workouts={workouts} /></div>
-
-      <div className="section-head">
-        <h2>Recent</h2>
-        <Link to="/history" className="btn ghost sm">All history →</Link>
-      </div>
-      {workouts.length === 0
-        ? <Empty>No workouts yet.</Empty>
-        : workouts.slice(0, 5).map((w) => <WorkoutRow key={w.id} workout={w} />)}
-
-      <div className="faint" style={{ fontSize: 12, marginTop: 18 }}>
-        Lifetime: {t.sets} sets · {trim(kgTo(t.volume, units.weight), 0)} {units.weight} moved ·{' '}
-        {formatDurationShort(t.durationS)} under the bar
-      </div>
     </div>
   );
 }

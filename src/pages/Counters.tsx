@@ -17,6 +17,7 @@ import {
   Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { useStore } from '../state/store';
+import { SubNav } from '../components/SubNav';
 import * as db from '../lib/db';
 import { ConfirmButton, Empty, Field, Modal, Stat } from '../components/ui';
 import { ExercisePicker } from '../components/ExercisePicker';
@@ -81,6 +82,7 @@ export function Counters() {
         </div>
         <button className="btn primary" onClick={() => setAdding(true)}>+ Track exercise</button>
       </div>
+      <SubNav section="today" />
 
       {counters.length === 0 && (
         <Empty>
@@ -291,7 +293,7 @@ function CounterCard({
               <ReferenceLine y={counter.dailyGoal} stroke="var(--warn)" strokeDasharray="4 4" />
             )}
             <Tooltip
-              cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+              cursor={{ fill: 'var(--chart-cursor)' }}
               content={({ active, payload }) =>
                 active && payload?.length ? (
                   <div className="tooltip">

@@ -138,10 +138,11 @@ export function ExerciseDetail() {
         ) : (
           <div className="chart-box">
             <ResponsiveContainer>
-              <LineChart data={chartData} margin={{ left: -8, right: 10, top: 6 }}>
+              <LineChart data={chartData} margin={{ left: 0, right: 10, top: 6 }}>
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={24} />
-                <YAxis domain={['auto', 'auto']} tickLine={false} axisLine={false} width={44} />
+                <YAxis domain={['auto', 'auto']} tickLine={false} axisLine={false} width={48}
+                  tickFormatter={(v: number) => trim(v, 1)} />
                 <Tooltip
                   content={({ active, payload, label }) =>
                     active && payload?.length ? (
@@ -152,7 +153,7 @@ export function ExerciseDetail() {
                       </div>
                     ) : null}
                 />
-                <Line type="monotone" dataKey="e1rm" stroke="var(--accent)" strokeWidth={2} dot={{ r: 2.5 }} />
+                <Line type="monotone" dataKey="e1rm" stroke="var(--accent-text)" strokeWidth={2} dot={{ r: 2.5 }} />
                 <Line type="monotone" dataKey="top" stroke="var(--text-faint)" strokeWidth={1} strokeDasharray="4 4" dot={false} />
               </LineChart>
             </ResponsiveContainer>

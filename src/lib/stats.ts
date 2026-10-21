@@ -7,7 +7,7 @@
 // jump around while you lift.
 
 import type {
-  BodyMeasurement, CounterUnit, Exercise, Workout, WorkoutSet,
+  BodyMeasurement, CounterUnit, Exercise, Routine, Workout, WorkoutSet,
 } from './types';
 
 export const isCounted = (s: WorkoutSet) => s.completed;
@@ -661,4 +661,141 @@ export function totals(workouts: Workout[]): Totals {
     }),
     { workouts: 0, volume: 0, sets: 0, reps: 0, durationS: 0 },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Today screen
+//
+// The home screen answers "what do I do now", so these look backwards only to
+// point forwards: which routine is due, which muscles have rested longest,
+// what got heavier lately.
+// ---------------------------------------------------------------------------
+
+/**
+ * Calendar days between an instant and `now`, in local time. Pinned to noon
+ * so a DST shift can't turn one day into 0.96 of one and round it away.
+ */
+export function daysSince(iso: string, now = new Date()): number {
+  const a = new Date(iso);
+  a.setHours(12, 0, 0, 0);
+  const b = new Date(now);
+  b.setHours(12, 0, 0, 0);
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+/**
+ * Days since each muscle group last got a working set, longest-rested first.
+ * Only groups you have ever trained appear — a muscle you never train isn't
+ * "overdue", it just isn't part of your programme. Warmups don't count: a
+ * warmup bench set hasn't trained your chest.
+ */
+export function daysSinceByMuscle(
+  workouts: Workout[],
+  exercises: Map<string, Exercise>,
+  now = new Date(),
+): { muscle: string; days: number }[] {
+  const last = new Map<string, string>();
+  for (const w of workouts) {
+    for (const we of w.exercises) {
+      const ex = exercises.get(we.exerciseId);
+      if (!ex || !we.sets.some(countsForVolume)) continue;
+      const prev = last.get(ex.muscleGroup);
+      if (!prev || w.startedAt > prev) last.set(ex.muscleGroup, w.startedAt);
+    }
+  }
+  return [...last.entries()]
+    .map(([muscle, iso]) => ({ muscle, days: daysSince(iso, now) }))
+    .sort((a, b) => b.days - a.days || a.muscle.localeCompare(b.muscle));
+}
+
+/**
+ * The routine to suggest next: whichever was done least recently, with one
+ * never done at all ahead of everything. That is a rotation without having to
+ * store one — run A, B, C and the suggestion walks round them by itself.
+ * Ties keep the routine list's own order. Empty routines are passed over
+ * unless every routine is empty.
+ */
+export function nextRoutine(
+  routines: Routine[],
+  workouts: Workout[],
+): { routine: Routine; lastDone: string | null } | null {
+  const withExercises = routines.filter((r) => r.exercises.length > 0);
+  const pool = [...(withExercises.length ? withExercises : routines)]
+    .sort((a, b) => a.position - b.position);
+
+  const last = new Map<string, string>();
+  for (const w of workouts) {
+    if (!w.routineId) continue;
+    const prev = last.get(w.routineId);
+    if (!prev || w.startedAt > prev) last.set(w.routineId, w.startedAt);
+  }
+
+  let best: { routine: Routine; lastDone: string | null } | null = null;
+  for (const routine of pool) {
+    const lastDone = last.get(routine.id) ?? null;
+    if (!best) best = { routine, lastDone };
+    else if (best.lastDone != null && (lastDone == null || lastDone < best.lastDone)) {
+      best = { routine, lastDone };
+    }
+  }
+  return best;
+}
+
+export interface RecentPR {
+  exerciseId: string;
+  weightKg: number;
+  reps: number;
+  date: string;
+}
+
+/**
+ * Exercises whose heaviest working set since `sinceIso` beats every working
+ * set before it, newest first. An exercise with no history before the window
+ * is skipped: a first session beats nothing, and calling every lift a new user
+ * logs a record would empty the word of meaning.
+ */
+export function recentPRs(workouts: Workout[], sinceIso: string): RecentPR[] {
+  const before = new Map<string, number>();
+  const after = new Map<string, RecentPR>();
+  for (const w of workouts) {
+    const recent = w.startedAt >= sinceIso;
+    for (const we of w.exercises) {
+      for (const s of we.sets) {
+        if (!countsForVolume(s) || s.weightKg == null || s.weightKg <= 0 || !s.reps) continue;
+        if (!recent) {
+          before.set(we.exerciseId, Math.max(before.get(we.exerciseId) ?? 0, s.weightKg));
+          continue;
+        }
+        const cur = after.get(we.exerciseId);
+        if (!cur || s.weightKg > cur.weightKg || (s.weightKg === cur.weightKg && s.reps > cur.reps)) {
+          after.set(we.exerciseId, {
+            exerciseId: we.exerciseId, weightKg: s.weightKg, reps: s.reps, date: w.startedAt,
+          });
+        }
+      }
+    }
+  }
+  return [...after.values()]
+    .filter((p) => before.has(p.exerciseId) && p.weightKg > before.get(p.exerciseId)!)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Where bodyweight is heading: the latest 7-entry moving average, and how far
+ * it moved since the last average at least a week older. Averages rather than
+ * raw weigh-ins, because a single morning swings by a kilo on water alone.
+ */
+export function weightTrend(
+  measurements: BodyMeasurement[],
+): { date: string; avgKg: number; deltaKg: number | null } | null {
+  const series = weightSeries(measurements);
+  const latest = series.at(-1);
+  if (!latest || latest.avg == null) return null;
+  const cutoff = Date.parse(`${latest.date}T12:00:00`) - 7 * 86400000;
+  const earlier = [...series].reverse().find((p) => Date.parse(`${p.date}T12:00:00`) <= cutoff);
+  return {
+    date: latest.date,
+    avgKg: latest.avg,
+    deltaKg: earlier?.avg != null ? latest.avg - earlier.avg : null,
+  };
 }

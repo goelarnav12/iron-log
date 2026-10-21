@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../state/store';
+import { SubNav } from '../components/SubNav';
 import * as db from '../lib/db';
 import { ConfirmButton, Empty, Field, Modal, Stat } from '../components/ui';
 import { CARDIO_ACTIVITIES, type CardioSession } from '../lib/types';
@@ -32,6 +33,7 @@ export function Cardio() {
         </div>
         <button className="btn primary" onClick={() => setEditing('new')}>+ Log cardio</button>
       </div>
+      <SubNav section="progress" />
 
       <div className="stat-grid">
         <Stat label="Sessions · 30d" value={recent.length} />

@@ -1,18 +1,31 @@
 import { useState } from 'react';
 import { useStore } from '../state/store';
 import { Field } from '../components/ui';
+import { SyncIndicator } from '../components/SyncIndicator';
+import { Icon } from '../components/Icon';
+import { THEMES, loadTheme, saveTheme, type ThemeId } from '../theme';
 import { totals } from '../lib/stats';
 
 const REST_KEY = 'ht.restSeconds';
+/** Read by Today's "this week" tile. */
+const TARGET_KEY = 'ht.weeklyTarget';
 
 export function Settings() {
   const { units, setUnits, session, signOut, workouts, exercises, cardio, measurements } = useStore();
   const [rest, setRest] = useState(() => Number(localStorage.getItem(REST_KEY) ?? 90));
+  const [theme, setTheme] = useState<ThemeId>(loadTheme);
+  const [target, setTarget] = useState(() => Number(localStorage.getItem(TARGET_KEY) ?? 3) || 3);
 
   function saveRest(v: number) {
     const clamped = Math.min(600, Math.max(10, Math.round(v)));
     setRest(clamped);
     localStorage.setItem(REST_KEY, String(clamped));
+  }
+
+  function saveTarget(v: number) {
+    const clamped = Math.min(14, Math.max(1, Math.round(v)));
+    setTarget(clamped);
+    localStorage.setItem(TARGET_KEY, String(clamped));
   }
 
   const t = totals(workouts);
@@ -21,8 +34,50 @@ export function Settings() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Settings</h1>
+          <h1>You</h1>
           <div className="sub">{session?.user.email}</div>
+        </div>
+        <SyncIndicator />
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginBottom: 4 }}>Theme</h3>
+        <p className="faint" style={{ fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+          Colours only. Saved on this device.
+        </p>
+        <div className="theme-grid">
+          {THEMES.map((t) => (
+            // Each option carries its own data-theme, so it previews itself
+            // in its own colours whatever the app is currently wearing.
+            <button
+              key={t.id}
+              data-theme={t.id}
+              className={`theme-opt ${theme === t.id ? 'on' : ''}`}
+              aria-pressed={theme === t.id}
+              onClick={() => { setTheme(t.id); saveTheme(t.id); }}
+            >
+              <span className="sw" />
+              <span className="txt">
+                <span className="name">{t.label}</span>
+                <span className="hint">{t.hint}</span>
+              </span>
+              {theme === t.id && <Icon name="check" size={20} />}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginBottom: 4 }}>Weekly target</h3>
+        <p className="faint" style={{ fontSize: 13, marginTop: 0, marginBottom: 14 }}>
+          How many workouts a week you're aiming for. Today counts you against it.
+        </p>
+        <div className="chips">
+          {[2, 3, 4, 5, 6].map((n) => (
+            <button key={n} className={`chip quick ${target === n ? 'active' : ''}`} onClick={() => saveTarget(n)}>
+              {n}
+            </button>
+          ))}
         </div>
       </div>
 

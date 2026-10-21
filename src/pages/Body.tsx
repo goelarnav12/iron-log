@@ -3,6 +3,7 @@ import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { useStore } from '../state/store';
+import { SubNav } from '../components/SubNav';
 import * as db from '../lib/db';
 import { ConfirmButton, Empty, Field, Modal, Stat } from '../components/ui';
 import { MEASUREMENT_FIELDS, type BodyMeasurement, type MeasurementField } from '../lib/types';
@@ -48,6 +49,7 @@ export function Body() {
         </div>
         <button className="btn primary" onClick={() => setEditing('new')}>+ Log entry</button>
       </div>
+      <SubNav section="progress" />
 
       <div className="stat-grid">
         <Stat
@@ -85,12 +87,13 @@ export function Body() {
                   weight: Number(kgTo(w.weightKg, units.weight).toFixed(1)),
                   avg: w.avg == null ? null : Number(kgTo(w.avg, units.weight).toFixed(1)),
                 }))}
-                margin={{ left: -8, right: 10, top: 6 }}
+                margin={{ left: 0, right: 10, top: 6 }}
               >
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={30}
                   tickFormatter={(d: string) => d.slice(5)} />
-                <YAxis domain={['auto', 'auto']} tickLine={false} axisLine={false} width={44} />
+                <YAxis domain={['auto', 'auto']} tickLine={false} axisLine={false} width={48}
+                  tickFormatter={(v: number) => trim(v, 1)} />
                 <Tooltip
                   content={({ active, payload, label }) =>
                     active && payload?.length ? (
@@ -103,7 +106,7 @@ export function Body() {
                 />
                 {/* Raw points sit behind; the moving average is the line you read. */}
                 <Line type="monotone" dataKey="weight" stroke="var(--text-faint)" strokeWidth={1} dot={{ r: 1.5 }} />
-                <Line type="monotone" dataKey="avg" stroke="var(--accent)" strokeWidth={2.2} dot={false} connectNulls />
+                <Line type="monotone" dataKey="avg" stroke="var(--accent-text)" strokeWidth={2.2} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -120,11 +123,12 @@ export function Body() {
         {tapeSeries.length < 2 ? <Empty>No {tapeLabel.toLowerCase()} history yet.</Empty> : (
           <div className="chart-box short">
             <ResponsiveContainer>
-              <LineChart data={tapeSeries} margin={{ left: -8, right: 10, top: 6 }}>
+              <LineChart data={tapeSeries} margin={{ left: 0, right: 10, top: 6 }}>
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={30}
                   tickFormatter={(d: string) => d.slice(5)} />
-                <YAxis domain={['auto', 'auto']} tickLine={false} axisLine={false} width={44} />
+                <YAxis domain={['auto', 'auto']} tickLine={false} axisLine={false} width={48}
+                  tickFormatter={(v: number) => trim(v, 1)} />
                 <Tooltip
                   content={({ active, payload, label }) =>
                     active && payload?.length ? (
@@ -134,7 +138,7 @@ export function Body() {
                       </div>
                     ) : null}
                 />
-                <Line type="monotone" dataKey="v" stroke="var(--accent)" strokeWidth={2} dot={{ r: 2.5 }} />
+                <Line type="monotone" dataKey="v" stroke="var(--accent-text)" strokeWidth={2} dot={{ r: 2.5 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>

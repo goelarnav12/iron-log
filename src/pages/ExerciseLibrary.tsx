@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../state/store';
+import { SubNav } from '../components/SubNav';
 import { Empty } from '../components/ui';
 import { NewExerciseForm } from '../components/NewExerciseForm';
 import { EQUIPMENT, MUSCLE_GROUPS } from '../lib/types';
@@ -33,6 +34,7 @@ export function ExerciseLibrary() {
         </div>
         <button className="btn primary" onClick={() => setCreating(true)}>+ New exercise</button>
       </div>
+      <SubNav section="progress" />
 
       <input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
 

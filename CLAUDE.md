@@ -71,6 +71,18 @@ What matters when editing:
   stats and PR badges on the same screen re-derive as you type. Sets added there
   are seeded `completed: true`, because a finished workout has no tick left to
   press and an unticked row counts toward nothing.
+- **Navigation is `src/nav.ts`**: four sections (Today, Train, Progress, You),
+  each a list of path prefixes. URLs stay flat (`/history`, not
+  `/progress/history`) so old links and bookmarks still resolve; moving a page
+  to another section means editing `nav.ts`, not its route.
+- **Every colour is a token** at the top of `index.css`, translucent tints
+  included. Never put a hex or `rgba()` in a component; a Recharts prop takes
+  `var(--…)` like anything else. The tokens are set per theme
+  (`[data-theme="…"]`, chosen under You, listed in `src/theme.ts`), so a
+  hardcoded colour is wrong on five of six themes. Use `--accent` for fills
+  and `--accent-text` for the accent as text or a thin line: on Crimson and
+  Ultraviolet the fill is too dark to read on the ground. Adding a token means
+  adding it to every theme block, or set a shared default in the first `:root`.
 - Built-in exercises are the rows with `user_id IS NULL`: world-readable, and no
   RLS write policy matches them. Custom exercises carry your uid.
 - `schema.sql` describes the current shape for a fresh project. Changes to a live

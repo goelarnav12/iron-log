@@ -1,15 +1,16 @@
-import { useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { StoreProvider, useStore } from './state/store';
 import { isConfigured } from './lib/supabase';
 import { SyncIndicator } from './components/SyncIndicator';
-import { MoreSheet } from './components/MoreSheet';
+import { Icon } from './components/Icon';
+import { SECTIONS, sectionFor } from './nav';
 import { Auth } from './pages/Auth';
-import { Dashboard } from './pages/Dashboard';
+import { Today } from './pages/Today';
+import { Train } from './pages/Train';
+import { Trends } from './pages/Trends';
 import { History } from './pages/History';
 import { WorkoutDetail } from './pages/WorkoutDetail';
 import { LiveWorkout } from './pages/LiveWorkout';
-import { Routines } from './pages/Routines';
 import { RoutineEditor } from './pages/RoutineEditor';
 import { ExerciseLibrary } from './pages/ExerciseLibrary';
 import { ExerciseDetail } from './pages/ExerciseDetail';
@@ -18,47 +19,31 @@ import { Body } from './pages/Body';
 import { Counters } from './pages/Counters';
 import { Settings } from './pages/Settings';
 
-/** `end` matters only for '/', which would otherwise match every route. */
-interface NavItem { to: string; icon: string; label: string; end?: boolean }
-
-/** The four things you reach for often enough to deserve a permanent tab. */
-const TABS: NavItem[] = [
-  { to: '/',        icon: '◎', label: 'Home', end: true },
-  { to: '/workout', icon: '⚡', label: 'Workout' },
-  { to: '/history', icon: '≡', label: 'History' },
-  { to: '/daily',   icon: '✚', label: 'Daily' },
-];
-
 /**
- * The rest. On desktop they're just more sidebar rows; on a phone they live
- * behind the "More" tab — a tab bar gets unhittable past about five targets,
- * and these are all things you touch weekly at most.
+ * Four sections, the same four on every screen size: a tab bar on a phone, a
+ * sidebar on desktop. Everything else lives inside a section — see `nav.ts` —
+ * so the tab bar never needs a "More" overflow.
  */
-const SECONDARY = [
-  { to: '/body',      icon: '◭', label: 'Body',      hint: 'Weight and measurements' },
-  { to: '/cardio',    icon: '⇢', label: 'Cardio',    hint: 'Runs, rides, conditioning' },
-  { to: '/routines',  icon: '▤', label: 'Routines',  hint: 'Workout templates' },
-  { to: '/exercises', icon: '☰', label: 'Exercises', hint: 'Library and personal records' },
-  { to: '/settings',  icon: '⚙', label: 'Settings',  hint: 'Units, rest timer, account' },
-];
-
 function Shell() {
   const { session, signOut } = useStore();
-  const [moreOpen, setMoreOpen] = useState(false);
   const { pathname } = useLocation();
-
-  // Highlight "More" whenever the current route lives behind it, so the tab
-  // bar never looks like nothing is selected.
-  const onSecondary = SECONDARY.some((n) => pathname.startsWith(n.to));
+  const current = sectionFor(pathname);
 
   return (
     <div className="shell">
       <nav className="sidebar">
-        <div className="brand"><span className="dot" /> Iron Log</div>
-        {[...TABS, ...SECONDARY].map((n) => (
-          <NavLink key={n.to} to={n.to} end={'end' in n ? n.end : undefined} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-            <span className="ico">{n.icon}</span> {n.label}
-          </NavLink>
+        <Link to="/" className="brand"><span className="dot" /> Iron Log</Link>
+        {SECTIONS.map((s) => (
+          <div className="nav-group" key={s.id}>
+            <Link to={s.to} className={`nav-link ${current === s.id ? 'active' : ''}`}>
+              <Icon name={s.icon} /> {s.label}
+            </Link>
+            {current === s.id && s.pages.map((p) => (
+              <NavLink key={p.to} to={p.to} end={p.end} className={({ isActive }) => `nav-sub ${isActive ? 'active' : ''}`}>
+                {p.label}
+              </NavLink>
+            ))}
+          </div>
         ))}
         <div className="sidebar-foot">
           <div style={{ marginBottom: 10 }}><SyncIndicator /></div>
@@ -69,39 +54,32 @@ function Shell() {
 
       <main className="main">
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<Today />} />
+          <Route path="/daily" element={<Counters />} />
+          <Route path="/train" element={<Train />} />
           <Route path="/workout" element={<LiveWorkout />} />
-          <Route path="/history" element={<History />} />
-          <Route path="/history/:id" element={<WorkoutDetail />} />
-          <Route path="/routines" element={<Routines />} />
+          <Route path="/routines" element={<Navigate to="/train" replace />} />
           <Route path="/routines/new" element={<RoutineEditor />} />
           <Route path="/routines/:id" element={<RoutineEditor />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/history/:id" element={<WorkoutDetail />} />
           <Route path="/exercises" element={<ExerciseLibrary />} />
           <Route path="/exercises/:id" element={<ExerciseDetail />} />
-          <Route path="/cardio" element={<Cardio />} />
           <Route path="/body" element={<Body />} />
-          <Route path="/daily" element={<Counters />} />
+          <Route path="/cardio" element={<Cardio />} />
+          <Route path="/trends" element={<Trends />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
 
       <nav className="tabbar">
-        {TABS.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => (isActive ? 'active' : '')}>
-            <span className="ico">{n.icon}</span> {n.label}
-          </NavLink>
+        {SECTIONS.map((s) => (
+          <Link key={s.id} to={s.to} className={current === s.id ? 'active' : ''}>
+            <Icon name={s.icon} size={24} /> {s.label}
+          </Link>
         ))}
-        <button
-          type="button"
-          className={onSecondary ? 'active' : ''}
-          onClick={() => setMoreOpen(true)}
-        >
-          <span className="ico">⋯</span> More
-        </button>
       </nav>
-
-      {moreOpen && <MoreSheet items={SECONDARY} onClose={() => setMoreOpen(false)} />}
     </div>
   );
 }

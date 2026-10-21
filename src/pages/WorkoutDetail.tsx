@@ -129,7 +129,7 @@ export function WorkoutDetail() {
           return (
             <div className="card" key={we.id} style={{ marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <Link to={`/exercises/${we.exerciseId}`} style={{ fontWeight: 650, color: 'var(--accent)' }}>
+                <Link to={`/exercises/${we.exerciseId}`} style={{ fontWeight: 650, color: 'var(--accent-text)' }}>
                   {ex?.name ?? 'Unknown exercise'}
                 </Link>
                 <span className="faint" style={{ fontSize: 12 }}>{ex?.muscleGroup}</span>
