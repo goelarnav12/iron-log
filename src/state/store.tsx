@@ -174,8 +174,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     void (async () => {
-      // One-time cutover from Supabase. The cursors on a device that synced
-      // before hold Postgres timestamps; forgetting them makes the first sync
+      // One-time cutover from the old backend (Nov 2026). The cursors on a
+      // device that synced before belong to it; forgetting them makes the first sync
       // pull the whole log from the Worker. Row ids and updatedAt carried over
       // unchanged in the import, so that pull merges onto the local copy
       // instead of duplicating it, and anything still in the outbox goes up

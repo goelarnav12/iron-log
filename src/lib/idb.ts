@@ -1,11 +1,11 @@
-// The on-device mirror of the Postgres tables, plus the outbox that makes
+// The on-device store for every table, plus the outbox that makes
 // offline writes durable.
 //
 // Everything the app reads comes from here — pages never await the network.
-// `sync.ts` is the only thing that talks to Postgres, and it moves rows in
-// both directions through this file.
+// `sync.ts` reconciles with the server in the background, and it moves rows
+// in both directions through this file.
 //
-// Stores hold FLAT rows, one store per Postgres table, in the app's camelCase
+// Stores hold FLAT rows, one store per table, in the app's camelCase
 // shape plus two sync columns. `db.ts` assembles the nested models (a Workout
 // with its exercises and sets) from those flat rows.
 
@@ -275,7 +275,7 @@ export const setCursor = async (t: TableName, iso: string): Promise<void> => {
 
 /**
  * Forget every pull cursor so the next sync pulls everything. Used once, when a
- * device first meets the Worker backend: its cursors are Supabase timestamps.
+ * device first meets the Worker backend: its cursors belong to the old one.
  */
 export async function resetCursors(): Promise<void> {
   const d = (await idb()) as LooseDB;

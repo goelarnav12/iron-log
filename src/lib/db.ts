@@ -11,9 +11,10 @@
 //   Ids are generated HERE, on the client. That is what lets a row created
 //   offline be the same row after it syncs, rather than a duplicate.
 //
-//   Deletes are soft, and must cascade BY HAND. Postgres `on delete cascade`
-//   never fires, because a delete is now an UPDATE setting deleted_at. Miss a
-//   child and it becomes an orphan that syncs forever.
+//   Deletes are soft, and must cascade BY HAND. Nothing cascades for you: a
+//   delete is a write that sets deletedAt, and the server does not know which
+//   rows belong together. Miss a child and it becomes an orphan that syncs
+//   forever.
 
 import {
   allRows, deleteRow, getRow, putRow, rowsByIndex, type LocalCardio,

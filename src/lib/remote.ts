@@ -1,10 +1,8 @@
 // The translation boundary between the app's rows and the wire.
 //
-// This used to hold a camelCase <-> snake_case mapper per Postgres table. The
-// Worker is a generic store that keeps each row as an opaque JSON `payload`, so
-// all of that collapses into JSON.stringify / JSON.parse: rows go up exactly as
-// IndexedDB holds them, and come back the same. A component still never sees
-// `weight_kg`, because nothing produces it any more.
+// The Worker is a generic store that keeps each row as an opaque JSON
+// `payload`, so the translation is just JSON.stringify / JSON.parse: rows go up
+// exactly as IndexedDB holds them, and come back the same.
 //
 // `sync.ts` drives this; `backend.ts` is the only file that touches the network.
 

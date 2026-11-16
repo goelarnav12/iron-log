@@ -1,5 +1,6 @@
-// Field names are camelCase here and snake_case in Postgres. The mapping
-// happens in db.ts and nowhere else — see the row<->model helpers there.
+// The models. Field names are camelCase everywhere: in the app, in IndexedDB
+// and in the JSON the server stores. db.ts assembles the nested models from
+// the flat stored rows.
 
 export type TrackingType =
   | 'weight_reps'

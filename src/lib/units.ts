@@ -1,4 +1,4 @@
-// Unit conversion is a *display* concern. Every number in Postgres is kg / cm
+// Unit conversion is a *display* concern. Every number in storage is kg / cm
 // / m / s; these functions run at the edge of the UI, on the way in and out of
 // an input. Nothing here should ever be persisted.
 

@@ -377,7 +377,7 @@ function HoldTimer({ disabled, onLog }: { disabled: boolean; onLog: (seconds: nu
       ? 0 : Math.round((Date.now() - startRef.current) / 1000);
     reset();
     // Under a second is a fumbled tap, not a hold. Logging it would put a "0:00"
-    // in the day and break the check constraint on the way to Postgres.
+    // in the day, and a zero-length hold counts toward nothing.
     if (seconds >= 1) onLog(seconds);
   }
 

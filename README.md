@@ -10,9 +10,6 @@ Vite + React + TypeScript, installable as a PWA. Data lives on the device
 (IndexedDB) and syncs to this app's own Cloudflare Worker + D1 database, gated
 by a single sync password. Single user by design: one Worker, one log.
 
-Until November 2026 the backend was Supabase. The `*.sql` files at the root are
-that era's schema and are kept for reference only; nothing reads them now.
-
 ## Setup
 
 You need Node (`brew install node`) and a free Cloudflare account.
@@ -45,8 +42,8 @@ every later device asks for that password. There is no email and no reset
 link. A forgotten password means deleting the `sync_meta` row with
 `wrangler d1 execute`, which keeps the data and lets you set a new one.
 
-The built-in exercise library came across from Supabase in the one-off import.
-A brand-new store starts with an empty library; custom exercises work as normal.
+The built-in exercise library lives in the database like any other row. A
+brand-new store starts with an empty library; custom exercises work as normal.
 
 ## Deploying
 
@@ -80,7 +77,6 @@ open it, log a full session, and it uploads when you're back on a network.
 
 ```
 worker/               the sync API: Cloudflare Worker + D1, one generic table
-*.sql (root)          the old Supabase schema, reference only
 src/lib/types.ts      the models, and the enum-ish constant lists
 src/lib/db.ts         the app's data API — reads and writes IndexedDB only
 src/lib/idb.ts        the on-device mirror and the outbox

@@ -16,8 +16,7 @@ What matters when editing:
   no check constraints, no server-side validation — `db.ts` is the only place
   invariants are enforced. Gated by one sync password (PBKDF2 in `auth.ts`).
   Pushes go up in slices of 40 rows (`PUSH_CHUNK`) because the Workers free plan
-  caps D1 queries per request. Moved off Supabase in Nov 2026; the root `*.sql`
-  files are that era's schema, reference only.
+  caps D1 queries per request.
 - **Sync is pull-then-push**, resolving last-write-wins on `updatedAt`. Don't
   reorder it: pushing first would overwrite a newer remote edit with a stale
   local one.
