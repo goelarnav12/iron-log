@@ -13,7 +13,7 @@ import { weightSeries } from '../lib/stats';
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function Body() {
-  const { measurements, units, session, refreshMeasurements } = useStore();
+  const { measurements, units, refreshMeasurements } = useStore();
   const [editing, setEditing] = useState<BodyMeasurement | 'new' | null>(null);
   const [armedId, setArmedId] = useState<string | null>(null);
   const [tape, setTape] = useState<MeasurementField>('waistCm');
@@ -171,10 +171,9 @@ export function Body() {
         </div>
       ))}
 
-      {editing && session && (
+      {editing && (
         <MeasurementForm
           existing={editing === 'new' ? undefined : editing}
-          userId={session.user.id}
           onClose={() => setEditing(null)}
           onSaved={async () => { await refreshMeasurements(); setEditing(null); }}
         />
@@ -184,10 +183,9 @@ export function Body() {
 }
 
 function MeasurementForm({
-  existing, userId, onClose, onSaved,
+  existing, onClose, onSaved,
 }: {
   existing?: BodyMeasurement;
-  userId: string;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -214,7 +212,7 @@ function MeasurementForm({
           k, tape[k] === '' ? null : toCm(Number(tape[k]), units.length),
         ])),
         notes: notes || null,
-      }, userId);
+      });
       await onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));

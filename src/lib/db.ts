@@ -30,15 +30,14 @@ import type {
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
 
-/** Set at sign-in. Every row this device creates is stamped with it, because
- *  RLS rejects an insert whose user_id isn't the caller. */
-let currentUserId: string | null = null;
-export function setCurrentUser(id: string | null) { currentUserId = id; }
+/**
+ * Stamped on every row this device creates. There is one log per Worker and no
+ * accounts, so this is a constant rather than a user id; it exists because the
+ * app reads `userId` as "custom": built-in exercises have none.
+ */
+export const OWNER_ID = 'owner';
 
-function requireUser(): string {
-  if (!currentUserId) throw new Error('Not signed in');
-  return currentUserId;
-}
+const requireUser = (): string => OWNER_ID;
 
 /** Queue a background sync without blocking the caller. Fire-and-forget: the
  *  write is already durable on disk, so a failure here costs nothing. */
@@ -455,12 +454,12 @@ export async function fetchMeasurements(): Promise<BodyMeasurement[]> {
  * index on (user_id, date), so finding the existing row here is what keeps a
  * second entry from being rejected at push time.
  */
-export async function saveMeasurement(m: Partial<BodyMeasurement>, userId: string): Promise<void> {
+export async function saveMeasurement(m: Partial<BodyMeasurement>): Promise<void> {
   const all = await allRows<LocalMeasurement>('measurements');
   const existing = all.find((x) => x.date === m.date);
   await putRow('measurements', {
     id: existing?.id ?? uid(),
-    userId: existing?.userId ?? userId,
+    userId: existing?.userId ?? requireUser(),
     date: m.date!,
     weightKg: m.weightKg ?? null,
     neckCm: m.neckCm ?? null, shouldersCm: m.shouldersCm ?? null,

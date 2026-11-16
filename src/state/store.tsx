@@ -2,7 +2,7 @@
 //
 // The app is LOCAL-FIRST: every read and write in `db.ts` hits IndexedDB on
 // the device, so nothing here awaits the network and the whole app works
-// offline. `sync.ts` reconciles with Postgres in the background and this
+// offline. `sync.ts` reconciles with the Worker in the background and this
 // provider re-reads the mirror whenever a sync lands.
 //
 // Mutations still follow mutate-then-refresh, but "refresh" is now an
@@ -12,11 +12,10 @@ import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode,
 } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase, isConfigured } from '../lib/supabase';
+import * as backend from '../lib/backend';
 import * as db from '../lib/db';
 import * as sync from '../lib/sync';
-import { getMeta, setMeta, wipe } from '../lib/idb';
+import { getMeta, resetCursors, setMeta, wipe } from '../lib/idb';
 import type {
   BodyMeasurement, CardioSession, Counter, CounterEntry, Exercise, Routine, Workout,
 } from '../lib/types';
@@ -31,7 +30,10 @@ interface Units {
 const DEFAULT_UNITS: Units = { weight: 'kg', length: 'cm', distance: 'km' };
 
 interface Store {
-  session: Session | null;
+  /** Holds a sync token. The whole app sits behind this. */
+  signedIn: boolean;
+  /** Call after a successful backend.login/signup. */
+  markSignedIn: () => void;
   loading: boolean;
   /** True once the first data load after sign-in has finished. */
   ready: boolean;
@@ -82,8 +84,10 @@ function loadUnits(): Units {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [signedIn, setSignedIn] = useState(backend.isSignedIn);
+  // Kept for the Gate's contract. Nothing is asynchronous about sign-in state
+  // any more: the token is in localStorage or it isn't.
+  const loading = false;
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,21 +150,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [refreshExercises, refreshWorkouts, refreshActive, refreshRoutines,
       refreshCardio, refreshMeasurements, refreshCounters]);
 
-  useEffect(() => {
-    if (!isConfigured) {
-      setLoading(false);
-      return;
-    }
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s);
-      setLoading(false);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  // The server rejected the token (password changed elsewhere): back to the
+  // sign-in screen, keeping the local mirror and outbox intact.
+  useEffect(() => sync.onAuthLost(() => setSignedIn(false)), []);
+
+  const markSignedIn = useCallback(() => setSignedIn(backend.isSignedIn()), []);
 
   // Keeps the latest refreshAll reachable from the sync subscription without
   // making that subscription re-run on every render.
@@ -168,8 +162,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   refreshRef.current = refreshAll;
 
   useEffect(() => {
-    if (!session) {
-      db.setCurrentUser(null);
+    if (!signedIn) {
       setReady(false);
       setExercises([]); setWorkouts([]); setActiveWorkout(null);
       setRoutines([]); setCardio([]); setMeasurements([]);
@@ -181,13 +174,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     void (async () => {
-      // A different account on this device would inherit the previous user's
-      // mirror, and every row in the outbox would then be rejected by RLS.
-      const previous = await getMeta<string>('userId');
-      if (previous && previous !== session.user.id) await wipe();
-      await setMeta('userId', session.user.id);
-
-      db.setCurrentUser(session.user.id);
+      // One-time cutover from Supabase. The cursors on a device that synced
+      // before hold Postgres timestamps; forgetting them makes the first sync
+      // pull the whole log from the Worker. Row ids and updatedAt carried over
+      // unchanged in the import, so that pull merges onto the local copy
+      // instead of duplicating it, and anything still in the outbox goes up
+      // after it as normal.
+      if ((await getMeta<string>('backend')) !== 'worker') {
+        await resetCursors();
+        await setMeta('backend', 'worker');
+      }
       if (cancelled) return;
 
       // Render from whatever is already on disk before the network is involved
@@ -197,7 +193,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })();
 
     return () => { cancelled = true; stop?.(); };
-  }, [session, refreshAll]);
+  }, [signedIn, refreshAll]);
 
   // A completed sync may have pulled rows from another device; re-read the
   // mirror so the UI reflects them.
@@ -220,11 +216,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // writes are stranded on disk until the same account signs back in.
     await sync.syncNow().catch(() => {});
     await wipe();
-    await supabase.auth.signOut();
+    backend.signOut();
+    setSignedIn(false);
   }, []);
 
   const value: Store = {
-    session, loading, ready, error,
+    signedIn, markSignedIn, loading, ready, error,
     exercises, exercisesById, workouts, activeWorkout, routines, cardio, measurements,
     counters, counterEntries,
     units, setUnits,

@@ -1,6 +1,6 @@
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { StoreProvider, useStore } from './state/store';
-import { isConfigured } from './lib/supabase';
+import { syncConfigured } from './lib/backend';
 import { SyncIndicator } from './components/SyncIndicator';
 import { Icon } from './components/Icon';
 import { SECTIONS, sectionFor } from './nav';
@@ -25,7 +25,7 @@ import { Settings } from './pages/Settings';
  * so the tab bar never needs a "More" overflow.
  */
 function Shell() {
-  const { session, signOut } = useStore();
+  const { signOut } = useStore();
   const { pathname } = useLocation();
   const current = sectionFor(pathname);
 
@@ -47,7 +47,6 @@ function Shell() {
         ))}
         <div className="sidebar-foot">
           <div style={{ marginBottom: 10 }}><SyncIndicator /></div>
-          <div className="email">{session?.user.email}</div>
           <button className="btn ghost sm" onClick={signOut}>Sign out</button>
         </div>
       </nav>
@@ -85,16 +84,16 @@ function Shell() {
 }
 
 function Gate() {
-  const { session, loading } = useStore();
+  const { signedIn, loading } = useStore();
 
-  if (!isConfigured) {
+  if (!syncConfigured) {
     return (
       <div className="auth-wrap">
         <div className="auth-card card">
           <h3 style={{ marginBottom: 8 }}>Setup needed</h3>
           <p className="muted" style={{ fontSize: 14 }}>
-            Copy <code>.env.example</code> to <code>.env.local</code>, paste in your
-            Supabase project URL and publishable key, then restart <code>npm run dev</code>.
+            Copy <code>.env.example</code> to <code>.env.local</code>, set
+            <code> VITE_API_URL</code> to your Worker's URL, then restart <code>npm run dev</code>.
             See <code>README.md</code>.
           </p>
         </div>
@@ -102,7 +101,7 @@ function Gate() {
     );
   }
   if (loading) return <div className="auth-wrap"><span className="faint">Loading…</span></div>;
-  return session ? <Shell /> : <Auth />;
+  return signedIn ? <Shell /> : <Auth />;
 }
 
 export default function App() {

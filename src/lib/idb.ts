@@ -63,23 +63,10 @@ export type TableName =
   | 'workoutExercises' | 'sets' | 'cardio' | 'measurements'
   | 'counters' | 'counterEntries';
 
-/** Local store name → Postgres table name. */
-export const PG_TABLE: Record<TableName, string> = {
-  exercises: 'exercises',
-  routines: 'routines',
-  routineExercises: 'routine_exercises',
-  workouts: 'workouts',
-  workoutExercises: 'workout_exercises',
-  sets: 'sets',
-  cardio: 'cardio_sessions',
-  measurements: 'body_measurements',
-  counters: 'counters',
-  counterEntries: 'counter_entries',
-};
-
 /**
- * Push order matters: a child row referencing a parent that doesn't exist on
- * the server yet is a foreign-key violation. Parents first, always.
+ * Parents before children, always. The Worker has no foreign keys, but pulling
+ * in this order means a device never holds a set whose workout hasn't arrived
+ * yet, which every screen would otherwise have to tolerate.
  */
 export const PUSH_ORDER: TableName[] = [
   'exercises', 'routines', 'routineExercises', 'workouts',
@@ -286,6 +273,15 @@ export const setCursor = async (t: TableName, iso: string): Promise<void> => {
   await ((await idb()) as LooseDB).put('meta', iso, `cursor:${t}`);
 };
 
+/**
+ * Forget every pull cursor so the next sync pulls everything. Used once, when a
+ * device first meets the Worker backend: its cursors are Supabase timestamps.
+ */
+export async function resetCursors(): Promise<void> {
+  const d = (await idb()) as LooseDB;
+  for (const t of PUSH_ORDER) await d.delete('meta', `cursor:${t}`);
+}
+
 export const getMeta = async <T>(k: string): Promise<T | undefined> =>
   (await ((await idb()) as LooseDB).get('meta', k)) as T | undefined;
 
@@ -294,9 +290,8 @@ export const setMeta = async (k: string, v: unknown): Promise<void> => {
 };
 
 /**
- * Wipe everything. Used on sign-out, and when a different account signs in on
- * the same device — otherwise the new user would inherit the previous one's
- * mirror, and RLS would reject every row in the outbox.
+ * Wipe everything. Used on sign-out, so the next password to sign in on this
+ * device can't inherit this log's rows and push them into its own store.
  */
 export async function wipe(): Promise<void> {
   const d = (await idb()) as LooseDB;

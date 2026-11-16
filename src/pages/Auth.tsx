@@ -1,53 +1,88 @@
-import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+// The sync password screen. No email and no account: one log per Worker, and
+// the first password set claims it. The password never leaves the browser —
+// auth.ts stretches it into the token that is actually sent.
+
+import { useEffect, useState } from 'react';
+import { BackendError, getSalt, login, signup } from '../lib/backend';
+import { useStore } from '../state/store';
 import { Field } from '../components/ui';
 
+type Mode = 'loading' | 'signup' | 'login';
+
 export function Auth() {
-  const [email, setEmail] = useState('');
+  const { markSignedIn } = useStore();
+  const [mode, setMode] = useState<Mode>('loading');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function run(mode: 'in' | 'up') {
-    setBusy(true); setErr(null); setNote(null);
-    const fn = mode === 'in' ? supabase.auth.signInWithPassword : supabase.auth.signUp;
-    const { data, error } = await fn.call(supabase.auth, { email, password });
-    setBusy(false);
-    if (error) { setErr(error.message); return; }
-    // With email confirmation switched on, sign-up returns a user but no
-    // session — the app would otherwise sit on this screen with no explanation.
-    if (mode === 'up' && !data.session) setNote('Check your email to confirm the account, then sign in.');
+  useEffect(() => {
+    // Whether a log exists decides "create" vs "sign in". A network failure
+    // here is non-fatal: default to sign in, and the button surfaces any real
+    // error.
+    void getSalt()
+      .then((info) => setMode(info ? 'login' : 'signup'))
+      .catch(() => setMode('login'));
+  }, []);
+
+  async function submit() {
+    setBusy(true); setErr(null);
+    try {
+      if (mode === 'signup') await signup(password);
+      else await login(password);
+      setPassword('');
+      markSignedIn();
+    } catch (e) {
+      setErr(e instanceof BackendError && e.status === 401
+        ? 'Wrong sync password.'
+        : e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const creating = mode === 'signup';
 
   return (
     <div className="auth-wrap">
       <div className="auth-card">
         <div className="brand"><span className="dot" /> Iron Log</div>
         <div className="card">
-          <h3>Sign in</h3>
+          <h3>{creating ? 'Set a sync password' : 'Sign in'}</h3>
           <p className="muted" style={{ fontSize: 13.5, marginTop: 4, marginBottom: 18 }}>
-            Your training log is private to your account.
+            {creating
+              ? 'This creates your log. Use the same password on every device.'
+              : 'Enter your sync password to open your training log on this device.'}
           </p>
 
           {err && <div className="error-note">{err}</div>}
-          {note && <div className="error-note" style={{ background: 'var(--accent-soft)', borderColor: 'var(--accent-text)', color: 'var(--accent-text)' }}>{note}</div>}
 
           <form
-            onSubmit={(e) => { e.preventDefault(); void run('in'); }}
+            onSubmit={(e) => { e.preventDefault(); if (password.length >= 8) void submit(); }}
             style={{ display: 'grid', gap: 12 }}
           >
-            <Field label="Email">
-              <input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" />
+            <Field label="Sync password">
+              <input
+                type="password"
+                autoComplete={creating ? 'new-password' : 'current-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+              />
             </Field>
-            <Field label="Password">
-              <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 6 characters" />
-            </Field>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button className="btn primary" style={{ flex: 1 }} disabled={busy}>Log in</button>
-              <button type="button" className="btn" onClick={() => void run('up')} disabled={busy}>Sign up</button>
-            </div>
+            <button
+              className="btn primary"
+              style={{ marginTop: 4 }}
+              disabled={busy || mode === 'loading' || password.length < 8}
+            >
+              {creating ? 'Create log' : 'Sign in'}
+            </button>
           </form>
+          {creating && (
+            <p className="faint" style={{ fontSize: 12.5, marginTop: 12, marginBottom: 0 }}>
+              There&apos;s no email and no reset link, so keep it in your password manager.
+            </p>
+          )}
         </div>
       </div>
     </div>

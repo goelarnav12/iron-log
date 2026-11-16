@@ -6,51 +6,47 @@ bodyweight/tape-measurement trends. Exercises reorder mid-session, and a
 finished workout stays editable — its clock, name, notes, sets and exercise
 list — from its page in History.
 
-Vite + React + TypeScript, Supabase for auth and storage, installable as a PWA.
-Single user by design — every row is scoped to your account by row level
-security.
+Vite + React + TypeScript, installable as a PWA. Data lives on the device
+(IndexedDB) and syncs to this app's own Cloudflare Worker + D1 database, gated
+by a single sync password. Single user by design: one Worker, one log.
+
+Until November 2026 the backend was Supabase. The `*.sql` files at the root are
+that era's schema and are kept for reference only; nothing reads them now.
 
 ## Setup
 
-You need Node (`brew install node`) and a free Supabase project.
+You need Node (`brew install node`) and a free Cloudflare account.
 
-**1. Create the Supabase project** at [supabase.com](https://supabase.com).
-
-**2. Create the tables.** In the dashboard, open SQL Editor → New Query, and run
-these three files in order:
-
-1. `schema.sql` — tables, indexes, RLS policies
-2. `migration_001_offline_sync.sql` — adds the `updated_at` / `deleted_at`
-   columns the offline sync needs. **Required**: without it every sync fails.
-3. `migration_002_counters.sql` — the daily counter tables. Also required:
-   the sync pulls every table, so a missing one fails the whole cycle.
-4. `migration_003_counter_duration.sql` — adds `counter_entries.duration_s` so
-   a counter can hold time. **Required**, and required *before* deploying the
-   app that writes it: without the column every counter-entry push fails.
-5. `seed_exercises.sql` — the ~295 built-in exercises. Skipping this is the
-   reason for an empty exercise picker; `schema.sql` only creates the table.
-
-**3. Point the app at it.**
+**1. The Worker** (`worker/`, the sync API — a copy of Tally's, with its own
+database):
 
 ```sh
-cp .env.example .env.local
-```
-
-Fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from
-Project Settings → API Keys. The publishable key is public by design; row level
-security is what protects the data.
-
-**4. Run it.**
-
-```sh
+cd worker
 npm install
-npm run dev          # http://localhost:5173
+npx wrangler login
+npx wrangler d1 create iron-log          # put the id in wrangler.toml
+npm run db:remote                        # applies worker/schema.sql
+npm run deploy                           # prints the Worker URL
 ```
 
-Sign up with any email and password on first load. If Supabase's email
-confirmation is on (Authentication → Providers → Email), you'll need to click
-the link before you can sign in — or switch confirmation off, since it's a
-single-user app.
+Add the app's production URL to `ALLOWED_ORIGINS` in `wrangler.toml` (exact
+origins only, no wildcards) and deploy again.
+
+**2. Point the app at it.**
+
+```sh
+cp .env.example .env.local               # set VITE_API_URL to the Worker URL
+npm install
+npm run dev                              # http://localhost:5173
+```
+
+The first load asks you to **set a sync password**, which creates the log;
+every later device asks for that password. There is no email and no reset
+link. A forgotten password means deleting the `sync_meta` row with
+`wrangler d1 execute`, which keeps the data and lets you set a new one.
+
+The built-in exercise library came across from Supabase in the one-off import.
+A brand-new store starts with an empty library; custom exercises work as normal.
 
 ## Deploying
 
@@ -59,7 +55,8 @@ npm run build        # -> dist/
 ```
 
 Drag `dist/` to Netlify Drop, or point Vercel/Cloudflare Pages at the repo.
-Set the same two env vars in the host's dashboard.
+Set `VITE_API_URL` in the host's dashboard, and add the deployed origin to
+the Worker's `ALLOWED_ORIGINS`.
 
 Three things the host needs to get right:
 
@@ -82,17 +79,18 @@ open it, log a full session, and it uploads when you're back on a network.
 ## Layout
 
 ```
-schema.sql            run once — tables, indexes, RLS policies
-migration_00N_*.sql   run once after schema, in order
-seed_exercises.sql    run once after schema — the built-in exercise library
+worker/               the sync API: Cloudflare Worker + D1, one generic table
+*.sql (root)          the old Supabase schema, reference only
 src/lib/types.ts      the models, and the enum-ish constant lists
 src/lib/db.ts         the app's data API — reads and writes IndexedDB only
 src/lib/idb.ts        the on-device mirror and the outbox
 src/lib/sync.ts       the background push/pull loop and conflict resolution
-src/lib/remote.ts     the only file that talks to Supabase; all snake_case
+src/lib/remote.ts     rows <-> wire records (JSON payloads)
+src/lib/backend.ts    the only file that touches the network; sync password
+src/lib/auth.ts       sync password -> PBKDF2 token
 src/lib/stats.ts      pure arithmetic — volume, e1RM, PRs, streaks
 src/lib/units.ts      kg/lb, cm/in, km/mi, duration parsing and formatting
-src/state/store.tsx   auth + all app data in one context
+src/state/store.tsx   sign-in state + all app data in one context
 src/nav.ts            the four sections and which pages live under each
 src/pages/            one file per route
 src/components/       shared pieces (modal, stat tile, icons, exercise picker)
@@ -129,7 +127,7 @@ back and forth freely.
 
 **Local-first.** The app reads and writes IndexedDB, never the network. Every
 screen renders from the on-device mirror, so a cold start with no signal shows
-your full history and logging never fails. `sync.ts` reconciles with Postgres
+your full history and logging never fails. `sync.ts` reconciles with the Worker
 in the background — on a 30s timer, on regaining connectivity, and whenever the
 tab returns to the foreground.
 
@@ -144,11 +142,11 @@ overwritten and its outbox entry dropped. Pushing first would overwrite the
 server with the older value and lose the newer edit. Conflicts resolve
 last-write-wins per row.
 
-**Deletes are soft**, via `deleted_at`. A hard delete is invisible to a device
+**Deletes are soft**, via `deletedAt`. A hard delete is invisible to a device
 that was offline when it happened — it has nothing to pull, so it would
 resurrect the row on its next push. The cost is that cascades must be done by
-hand in `db.ts`: Postgres `on delete cascade` never fires, because a delete is
-now an UPDATE. Delete a workout and you must tombstone its exercises and sets
+hand in `db.ts`: the Worker stores opaque rows and knows nothing about which
+belong to which. Delete a workout and you must tombstone its exercises and sets
 yourself.
 
 **The sync indicator** in the header is green when synced, amber with a count
@@ -173,7 +171,7 @@ A counter on a **duration-tracked exercise counts seconds, not reps** — you
 hold a plank, you don't rep it. The unit is read off the exercise's
 `trackingType` every time rather than stored on the counter, so it can't
 disagree with the library, and the entry lands in `reps` or `duration_s`
-accordingly (exactly one, enforced by a check constraint). The card then swaps
+accordingly (exactly one; nothing on the server checks it, so `db.ts` must). The card then swaps
 its quick-add chips for times, adds a stopwatch, and reads its goal, stats,
 axis and tooltip as `m:ss`.
 
@@ -212,11 +210,9 @@ second commits. There is no undo anywhere.
 
 ## Adding things
 
-- **An exercise** — use "+ New exercise" in the app. Editing `seed_exercises.sql`
-  and re-running it is for adding to the shared built-in library; it anti-joins
-  on name, so it's safe to re-run.
-- **A schema change** — put it in a numbered `migration_NNN_*.sql` and run it by
-  hand in the SQL Editor, the way `Poker_ledger` does. `schema.sql` describes
-  the current shape for a fresh project; it is not a migration history.
+- **An exercise** — use "+ New exercise" in the app.
+- **A field** — add it to the type in `types.ts` and write it in `db.ts`. The
+  Worker stores whole rows as JSON, so there is no server schema to migrate;
+  old rows simply lack the key, so read it with a default (`?? null`).
 - **A statistic** — `stats.ts`, as a pure function. Components should read it,
   not compute it.

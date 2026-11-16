@@ -3,28 +3,34 @@
 Read `README.md` first — it covers setup, deploy, and the design decisions.
 What matters when editing:
 
-- **Units.** kg / cm / m / s in Postgres, always. The kg-lb and cm-in toggles are
+- **Units.** kg / cm / m / s in storage, always. The kg-lb and cm-in toggles are
   display-only and convert at the UI edge via `src/lib/units.ts`. Never persist a
   converted number.
 - **The app is local-first.** `src/lib/db.ts` is the data API and touches only
   IndexedDB (`src/lib/idb.ts`) — no screen ever awaits the network. `sync.ts`
-  reconciles with Postgres in the background, and `src/lib/remote.ts` is the
-  ONLY file that talks to Supabase and the only place camelCase↔snake_case
-  translation happens. A component should never see `weight_kg`.
+  reconciles in the background, `src/lib/remote.ts` turns rows into wire
+  records, and `src/lib/backend.ts` is the ONLY file that touches the network.
+- **The backend is this app's own Cloudflare Worker + D1** (`worker/`), copied
+  from Tally's and deliberately NOT shared with it. A generic sync store: one
+  `records` table, each row's full camelCase JSON as `payload`. No foreign keys,
+  no check constraints, no server-side validation — `db.ts` is the only place
+  invariants are enforced. Gated by one sync password (PBKDF2 in `auth.ts`).
+  Pushes go up in slices of 40 rows (`PUSH_CHUNK`) because the Workers free plan
+  caps D1 queries per request. Moved off Supabase in Nov 2026; the root `*.sql`
+  files are that era's schema, reference only.
 - **Sync is pull-then-push**, resolving last-write-wins on `updatedAt`. Don't
   reorder it: pushing first would overwrite a newer remote edit with a stale
   local one.
-- **Deletes are soft** (`deletedAt` tombstones) and cascades are MANUAL. Postgres
-  `on delete cascade` never fires now, because a delete is an UPDATE. Deleting a
-  parent without tombstoning its children leaves orphans that sync forever.
+- **Deletes are soft** (`deletedAt` tombstones) and cascades are MANUAL. The
+  Worker has no cascades at all; it doesn't know which rows belong together.
+  Deleting a parent without tombstoning its children leaves orphans that sync forever.
 - **Recharts: one plain `<Bar>` per series.** Per-datum `<Cell>` children
   collapse the series into a single rectangle, and two Bars sharing a `stackId`
   rendered at roughly a fifteenth of true height. Both were observed on real
   data in this app; if you need per-bar colour, verify it renders before
   trusting it.
 - **Client generates ids** (`crypto.randomUUID`). That's what makes a row created
-  offline the same row after it syncs instead of a duplicate. Never let Postgres
-  default the id.
+  offline the same row after it syncs instead of a duplicate.
 - **`src/lib/stats.ts` is pure** — no DOM, no network, no app state. All arithmetic
   (volume, Epley e1RM, PRs, streaks, overload suggestions, strength standards)
   lives there so it stays testable. It is also **unit-agnostic**: it deals in kg
@@ -83,8 +89,8 @@ What matters when editing:
   and `--accent-text` for the accent as text or a thin line: on Crimson and
   Ultraviolet the fill is too dark to read on the ground. Adding a token means
   adding it to every theme block, or set a shared default in the first `:root`.
-- Built-in exercises are the rows with `user_id IS NULL`: world-readable, and no
-  RLS write policy matches them. Custom exercises carry your uid.
-- `schema.sql` describes the current shape for a fresh project. Changes to a live
-  project go in a numbered `migration_NNN_*.sql`, run by hand, same as
-  Poker_ledger.
+- **`userId` means "custom", not "who".** Built-in exercises have `userId: null`;
+  everything you create is stamped `OWNER_ID` (`'owner'`, in `db.ts`). The UI
+  reads it as a boolean. Don't compare it to anything.
+- **No server schema to migrate.** A new field goes in `types.ts` and `db.ts`;
+  rows written before it lack the key, so read it with a default.

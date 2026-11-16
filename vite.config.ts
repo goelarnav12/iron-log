@@ -29,8 +29,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // The shell is precached so the app opens with no signal. Supabase
-        // calls are deliberately NOT cached — a stale set list that silently
+        // The shell is precached so the app opens with no signal. Calls to
+        // the Worker are deliberately NOT cached — a stale set list that silently
         // discards what you just logged is worse than an honest error.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallbackDenylist: [/^\/api/],

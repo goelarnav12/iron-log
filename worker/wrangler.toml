@@ -1,0 +1,15 @@
+name = "iron-log-api"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# Origins allowed to call this Worker, exact match, comma-separated.
+#
+# Only stable aliases belong here. Per-deployment Vercel URLs change on every
+# deploy, and preview deployments deliberately get no access to your log.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,http://localhost:4173,https://iron-log-two-rho.vercel.app"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "iron-log"
+database_id = "048aac08-cbf4-489d-a49f-50e01bbd4768"

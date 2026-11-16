@@ -11,7 +11,7 @@ const REST_KEY = 'ht.restSeconds';
 const TARGET_KEY = 'ht.weeklyTarget';
 
 export function Settings() {
-  const { units, setUnits, session, signOut, workouts, exercises, cardio, measurements } = useStore();
+  const { units, setUnits, signOut, workouts, exercises, cardio, measurements } = useStore();
   const [rest, setRest] = useState(() => Number(localStorage.getItem(REST_KEY) ?? 90));
   const [theme, setTheme] = useState<ThemeId>(loadTheme);
   const [target, setTarget] = useState(() => Number(localStorage.getItem(TARGET_KEY) ?? 3) || 3);
@@ -35,7 +35,7 @@ export function Settings() {
       <div className="page-head">
         <div>
           <h1>You</h1>
-          <div className="sub">{session?.user.email}</div>
+          <div className="sub">Synced with your Iron Log</div>
         </div>
         <SyncIndicator />
       </div>

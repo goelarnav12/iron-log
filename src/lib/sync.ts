@@ -17,6 +17,7 @@ import {
   outboxFail, outboxPut, putRow, setCursor, type SyncFields, type TableName,
 } from './idb';
 import { pull, push } from './remote';
+import { BackendError, isSignedIn, signOut } from './backend';
 
 export type SyncState = 'idle' | 'syncing' | 'offline' | 'error';
 
@@ -28,6 +29,13 @@ export interface SyncStatus {
 }
 
 type Listener = (s: SyncStatus) => void;
+
+/** Told when the server rejects this device's token (see syncNow). */
+const authListeners = new Set<() => void>();
+export function onAuthLost(fn: () => void): () => void {
+  authListeners.add(fn);
+  return () => authListeners.delete(fn);
+}
 
 let status: SyncStatus = { state: 'idle', pending: 0, lastSyncedAt: null, error: null };
 const listeners = new Set<Listener>();
@@ -82,9 +90,9 @@ async function pullAll(): Promise<void> {
     const rows = await pull(table, cursor);
     if (!rows.length) continue;
     for (const r of rows) await merge(table, r as SyncFields & { id: string });
-    // Advance to the newest row seen. Rows share timestamps only at millisecond
-    // granularity, and `pull` uses a strict `>`, so a tie would be skipped —
-    // hence ordering by updated_at and taking the last one, not max-plus-one.
+    // Advance to the newest row seen. The Worker's pull is `>=`, not `>`, so
+    // two rows sharing a millisecond are never skipped; the price is that the
+    // newest row comes back once more next time, which `merge` absorbs.
     const newest = rows[rows.length - 1] as SyncFields;
     await setCursor(table, newest.updatedAt);
   }
@@ -95,8 +103,7 @@ async function pushAll(): Promise<void> {
   if (!entries.length) return;
 
   // Group by table and push in PUSH_ORDER, so a parent row always lands before
-  // the child that references it. Without this a set can arrive before its
-  // workout_exercise and Postgres rejects it on the foreign key.
+  // the child that references it and another device never pulls an orphan.
   for (const table of PUSH_ORDER) {
     const forTable = entries.filter((e) => e.table === table && e.attempts < MAX_ATTEMPTS);
     if (!forTable.length) continue;
@@ -119,7 +126,7 @@ async function pushAll(): Promise<void> {
       await push(table, rows as Record<string, unknown>[]);
       for (const k of keys) await outboxClear(k);
     } catch (err) {
-      // Fail the whole batch rather than guessing which row Postgres rejected.
+      // Fail the whole batch rather than guessing which row was rejected.
       // Each retry re-attempts them individually once attempts climb, and a
       // genuinely bad row eventually crosses MAX_ATTEMPTS and stops blocking.
       const msg = err instanceof Error ? err.message : String(err);
@@ -136,6 +143,7 @@ async function pushAll(): Promise<void> {
  * calls collapse into a single run followed by one repeat if needed.
  */
 export async function syncNow(): Promise<void> {
+  if (!isSignedIn()) return;
   if (running) { rerun = true; return; }
   running = true;
   emit({ state: 'syncing', error: null });
@@ -150,6 +158,13 @@ export async function syncNow(): Promise<void> {
       error: null,
     });
   } catch (err) {
+    // The password was changed on another device: this token is dead. Drop it
+    // so the app shows the sign-in screen; local rows and the outbox stay put
+    // and go up once the new password is entered.
+    if (err instanceof BackendError && err.status === 401) {
+      signOut();
+      authListeners.forEach((l) => l());
+    }
     const msg = err instanceof Error ? err.message : String(err);
     // A network failure is "offline", not an error to alarm the user with —
     // the writes are safe on disk and will go up when the signal returns.
